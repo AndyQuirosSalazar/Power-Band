@@ -3,10 +3,7 @@ Power Band es un programa de creación e interacción musical que permite crear,
 
 Componentes
 Sintetizadores (SuperCollider). Tres synths en myband.sc: classicPiano, stringBass y organ70s. Java los invoca mediante BandClient, que envía mensajes OSC por UDP al servidor de SuperCollider (127.0.0.1:57110).
-Instrumentos. Dispositivos físicos conectados a Java, un dispositivo distinto por synth. No pueden ser teclado ni mouse.
-Mando (stick) controla classicPiano.
-Tableta de dibujo controla organ70s. Solo lee dónde está el lápiz y si está tocando o flotando.
-Micrófono controla stringBass. Solo lee el volumen.
+Instrumentos. Mando (stick) controla `stringBass` y solo aporta direcciones. La tableta de dibujo controla `classicPiano` y solo aporta posición y estado tocando/flotando. La tableta se lee mediante eventos AWT locales al área de prueba; AWT no distingue físicamente el lápiz del mouse, por lo que el usuario debe usar el lápiz en esa área. El micrófono integrado controla `organ70s` y solo aporta el nivel de volumen. El teclado no se usa como instrumento.
 Editor musical. Monitorea los comandos que los instrumentos envían a SuperCollider, y permite grabar, almacenar, cargar y reproducir música.
 Editor musical
 Grabar: guarda todos los comandos y sus tiempos en un archivo en tiempo real. Al terminar, se asigna un nombre único a la música.
@@ -28,6 +25,7 @@ Bridge: la jerarquía de instrumentos (abstracción) está separada de la jerarq
 - java 26.0.2
 - maven project 
 - java swing para el UI
+- LWJGL 3.3.4 GLFW para el mando; Java Sound para el micrófono.
 - unit testing junit
 - github source control and code repository 
 - The entrypoint (`public static void main`) stays in `src/app/powerBand.java`.

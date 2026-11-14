@@ -45,18 +45,23 @@ class MainMenuTest {
     }
 
     @Test
-    void placeholderButtonsAcceptClicksAndExitRunsItsAction()
+    void testButtonRunsItsActionAndExitRunsItsAction()
             throws InvocationTargetException, InterruptedException {
         AtomicInteger exitActionCalls = new AtomicInteger();
+        AtomicInteger testActionCalls = new AtomicInteger();
 
         SwingUtilities.invokeAndWait(() -> {
-            MainMenu menu = new MainMenu(exitActionCalls::incrementAndGet);
+            MainMenu menu = new MainMenu(exitActionCalls::incrementAndGet, testActionCalls::incrementAndGet);
             List<JButton> buttons = getButtons(menu);
 
-            for (JButton button : buttons.subList(0, 3)) {
+            assertDoesNotThrow(() -> buttons.get(0).doClick(0));
+            assertEquals(1, testActionCalls.get());
+
+            for (JButton button : buttons.subList(1, 3)) {
                 assertDoesNotThrow(() -> button.doClick(0));
             }
             assertEquals(0, exitActionCalls.get());
+            assertEquals(1, testActionCalls.get());
 
             buttons.get(3).doClick(0);
             assertEquals(1, exitActionCalls.get());

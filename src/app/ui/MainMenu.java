@@ -18,8 +18,13 @@ public final class MainMenu extends JPanel {
     private static final Dimension BUTTON_SIZE = new Dimension(220, 42);
 
     public MainMenu(Runnable pExitAction) {
+        this(pExitAction, () -> { });
+    }
+
+    public MainMenu(Runnable pExitAction, Runnable pTestAction) {
         super(new GridBagLayout());
         Objects.requireNonNull(pExitAction, "pExitAction");
+        Objects.requireNonNull(pTestAction, "pTestAction");
         setPreferredSize(MENU_SIZE);
 
         JLabel title = new JLabel(IConstants.WINDOW_TITLE, SwingConstants.CENTER);
@@ -49,6 +54,8 @@ public final class MainMenu extends JPanel {
 
             if (IConstants.BUTTON_EXIT.equals(buttonLabels[index])) {
                 button.addActionListener(pEvent -> pExitAction.run());
+            } else if (IConstants.BUTTON_TEST.equals(buttonLabels[index])) {
+                button.addActionListener(pEvent -> pTestAction.run());
             }
         }
     }
