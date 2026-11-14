@@ -6,6 +6,7 @@ import static org.lwjgl.glfw.GLFW.GLFW_JOYSTICK_1;
 import static org.lwjgl.glfw.GLFW.GLFW_JOYSTICK_LAST;
 import static org.lwjgl.glfw.GLFW.glfwGetGamepadName;
 import static org.lwjgl.glfw.GLFW.glfwGetGamepadState;
+import static org.lwjgl.glfw.GLFW.glfwGetJoystickAxes;
 import static org.lwjgl.glfw.GLFW.glfwGetJoystickName;
 import static org.lwjgl.glfw.GLFW.glfwInit;
 import static org.lwjgl.glfw.GLFW.glfwJoystickIsGamepad;
@@ -16,6 +17,7 @@ import static org.lwjgl.glfw.GLFW.glfwTerminate;
 
 import app.bridge.instruments.GamepadInstrument;
 import app.model.GamepadDirection;
+import java.nio.FloatBuffer;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.Objects;
@@ -41,6 +43,7 @@ public final class GlfwGamepadRuntime implements AutoCloseable {
     private boolean initialized;
     private boolean reportedNoGamepad;
     private int joystickId = -1;
+    private boolean joystickIsGamepad;
     private long nextDiscoveryTimeNanos;
 
     public GlfwGamepadRuntime() {
@@ -127,9 +130,14 @@ public final class GlfwGamepadRuntime implements AutoCloseable {
 
     private void discoverGamepad(SourceListener pListener) {
         joystickId = -1;
+        int joystickWithAxes = -1;
         for (int joystick = GLFW_JOYSTICK_1; joystick <= GLFW_JOYSTICK_LAST; joystick++) {
-            if (glfwJoystickPresent(joystick) && glfwJoystickIsGamepad(joystick)) {
+            if (!glfwJoystickPresent(joystick)) {
+                continue;
+            }
+            if (glfwJoystickIsGamepad(joystick)) {
                 joystickId = joystick;
+                joystickIsGamepad = true;
                 String name = glfwGetGamepadName(joystick);
                 if (name == null) {
                     name = glfwGetJoystickName(joystick);
@@ -138,9 +146,20 @@ public final class GlfwGamepadRuntime implements AutoCloseable {
                 reportedNoGamepad = false;
                 return;
             }
+            if (joystickWithAxes < 0 && hasDirectionalAxes(glfwGetJoystickAxes(joystick))) {
+                joystickWithAxes = joystick;
+            }
+        }
+        if (joystickWithAxes >= 0) {
+            joystickId = joystickWithAxes;
+            joystickIsGamepad = false;
+            pListener.statusConsumer.accept(
+                    "Conectado: " + glfwGetJoystickName(joystickWithAxes) + " (stick genérico)");
+            reportedNoGamepad = false;
+            return;
         }
         if (!reportedNoGamepad) {
-            pListener.statusConsumer.accept("No se detectó un mando compatible.");
+            pListener.statusConsumer.accept("No se detectó un mando o stick compatible.");
             reportedNoGamepad = true;
         }
         nextDiscoveryTimeNanos = System.nanoTime() + REDISCOVERY_INTERVAL_NANOS;
@@ -158,32 +177,58 @@ public final class GlfwGamepadRuntime implements AutoCloseable {
                 }
                 return;
             }
-            if (!glfwJoystickPresent(joystickId) || !glfwJoystickIsGamepad(joystickId)) {
+            if (!glfwJoystickPresent(joystickId)
+                    || (joystickIsGamepad && !glfwJoystickIsGamepad(joystickId))) {
                 activeListener.statusConsumer.accept("Mando desconectado.");
                 activeListener.inputConsumer.accept(GamepadDirection.NONE);
                 joystickId = -1;
+                joystickIsGamepad = false;
                 reportedNoGamepad = false;
                 nextDiscoveryTimeNanos = System.nanoTime();
                 return;
             }
 
-            try (MemoryStack stack = MemoryStack.stackPush()) {
-                GLFWGamepadState state = GLFWGamepadState.malloc(stack);
-                if (!glfwGetGamepadState(joystickId, state)) {
-                    activeListener.statusConsumer.accept("No se pudo leer el estado del mando.");
+            GamepadDirection direction;
+            if (joystickIsGamepad) {
+                try (MemoryStack stack = MemoryStack.stackPush()) {
+                    GLFWGamepadState state = GLFWGamepadState.malloc(stack);
+                    if (!glfwGetGamepadState(joystickId, state)) {
+                        activeListener.statusConsumer.accept("No se pudo leer el estado del mando.");
+                        return;
+                    }
+                    direction = GamepadInstrument.directionFromAxes(
+                            state.axes(GLFW_GAMEPAD_AXIS_LEFT_X),
+                            state.axes(GLFW_GAMEPAD_AXIS_LEFT_Y));
+                }
+            } else {
+                FloatBuffer axes = glfwGetJoystickAxes(joystickId);
+                if (!hasDirectionalAxes(axes)) {
+                    activeListener.statusConsumer.accept("No se pudieron leer los ejes del stick.");
                     return;
                 }
-                GamepadDirection direction = GamepadInstrument.directionFromAxes(
-                        state.axes(GLFW_GAMEPAD_AXIS_LEFT_X),
-                        state.axes(GLFW_GAMEPAD_AXIS_LEFT_Y));
-                activeListener.inputConsumer.accept(direction);
+                direction = directionFromJoystickAxes(axes);
             }
+            activeListener.inputConsumer.accept(direction);
         } catch (IllegalCallerException | IllegalStateException | UnsatisfiedLinkError pError) {
             activeListener.statusConsumer.accept("Error leyendo el mando: " + pError.getMessage());
             joystickId = -1;
             activeListener = null;
             releaseNativeResources();
         }
+    }
+
+    static GamepadDirection directionFromJoystickAxes(FloatBuffer pAxes) {
+        if (!hasDirectionalAxes(pAxes)) {
+            throw new IllegalArgumentException("joystick must expose at least two axes");
+        }
+        int firstAxis = pAxes.position();
+        return GamepadInstrument.directionFromAxes(
+                pAxes.get(firstAxis),
+                pAxes.get(firstAxis + 1));
+    }
+
+    private static boolean hasDirectionalAxes(FloatBuffer pAxes) {
+        return pAxes != null && pAxes.remaining() >= 2;
     }
 
     private void processActions() {

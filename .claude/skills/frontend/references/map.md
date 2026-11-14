@@ -6,6 +6,9 @@ Source: `src/app/ui`
 
 ## Implemented
 - Swing menu and device-test window: `src/app/ui/MainMenu.java`, `src/app/ui/DeviceTestWindow.java`
+- Device-test window displays each gamepad direction received: `src/app/ui/DeviceTestWindow.java`
+- Device-test window displays the live normalized microphone signal as a level meter: `src/app/ui/DeviceTestWindow.java`
+- Device-test window displays tablet contact state and normalized X/Y coordinates: `src/app/ui/DeviceTestWindow.java`
 - Tablet input area, using local AWT mouse events as pen input: `src/app/ui/TabletInputPanel.java`
 
 ## Entrypoints
@@ -18,7 +21,7 @@ Displays the title and four buttons. `src/app/ui/MainMenu.java`
 - `MainMenu(Runnable pExitAction, Runnable pTestAction)` — wires `Probar` and `Salir` actions.
 
 ### DeviceTestWindow
-Shows device statuses and the tablet input area. `src/app/ui/DeviceTestWindow.java`
+Shows device statuses, a live microphone level meter, tablet contact state and normalized X/Y coordinates, and the tablet input area. `src/app/ui/DeviceTestWindow.java`
 - `DeviceTestWindow(BandClient pBandClient, GlfwGamepadRuntime pGamepadRuntime)` — starts a device-test session when shown and closes its resources when disposed.
 
 ### TabletInputPanel

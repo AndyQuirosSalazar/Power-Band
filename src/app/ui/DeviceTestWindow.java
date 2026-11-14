@@ -12,10 +12,12 @@ import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.awt.GridLayout;
 import java.io.IOException;
+import java.util.Locale;
 import java.util.Objects;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
+import javax.swing.JProgressBar;
 import javax.swing.SwingUtilities;
 import javax.swing.WindowConstants;
 
@@ -26,6 +28,7 @@ public final class DeviceTestWindow extends JFrame {
     private final JLabel gamepadStatus = new JLabel("Mando: no iniciado");
     private final JLabel tabletStatus = new JLabel("Tableta: use el lápiz en el área de prueba");
     private final JLabel microphoneStatus = new JLabel("Micrófono: no iniciado");
+    private final JProgressBar microphoneLevel = new JProgressBar(0, 100);
     private final JLabel synthStatus = new JLabel("Synths: listos para probar");
 
     public DeviceTestWindow(BandClient pBandClient, GlfwGamepadRuntime pGamepadRuntime) {
@@ -35,15 +38,20 @@ public final class DeviceTestWindow extends JFrame {
                 new GlfwGamepadInputSource(pGamepadRuntime),
                 new JavaSoundMicrophoneInputSource(),
                 this::sendCommand,
+                this::showMicrophoneLevel,
                 this::showStatus);
 
         setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
         setLayout(new BorderLayout(8, 8));
 
         JPanel statuses = new JPanel(new GridLayout(0, 1, 4, 4));
+        microphoneLevel.setStringPainted(true);
+        microphoneLevel.setString("Señal: 0%");
+        microphoneLevel.getAccessibleContext().setAccessibleName("Nivel de señal del micrófono");
         statuses.add(gamepadStatus);
         statuses.add(tabletStatus);
         statuses.add(microphoneStatus);
+        statuses.add(microphoneLevel);
         statuses.add(synthStatus);
         add(statuses, BorderLayout.NORTH);
         add(new TabletInputPanel(this::acceptTabletInput), BorderLayout.CENTER);
@@ -68,9 +76,13 @@ public final class DeviceTestWindow extends JFrame {
 
     private void acceptTabletInput(TabletInput pInput) {
         session.acceptTabletInput(pInput);
-        tabletStatus.setText(pInput.isTouching()
-                ? "Tableta: tocando"
-                : "Tableta: flotando");
+        String contactStatus = pInput.isTouching() ? "tocando" : "flotando";
+        tabletStatus.setText(String.format(
+                Locale.ROOT,
+                "Tableta: %s | X: %.2f | Y: %.2f",
+                contactStatus,
+                pInput.getX(),
+                pInput.getY()));
     }
 
     private void sendCommand(SynthCommand pCommand) {
@@ -80,6 +92,19 @@ public final class DeviceTestWindow extends JFrame {
             } catch (IOException pError) {
                 showStatus("Synths: error enviando comando: " + pError.getMessage());
             }
+        }
+    }
+
+    private void showMicrophoneLevel(float pLevel) {
+        int percentage = Math.round(pLevel * 100f);
+        Runnable update = () -> {
+            microphoneLevel.setValue(percentage);
+            microphoneLevel.setString("Señal: " + percentage + "%");
+        };
+        if (SwingUtilities.isEventDispatchThread()) {
+            update.run();
+        } else {
+            SwingUtilities.invokeLater(update);
         }
     }
 

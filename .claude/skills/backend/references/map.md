@@ -63,8 +63,8 @@ Normalized pointer coordinates and touch state. `src/app/model/TabletInput.java`
 - `isTouching()` — returns contact state.
 
 ### DeviceTestSession
-Connects source events to Bridge instruments and a command consumer. `src/app/logic/DeviceTestSession.java`
-- `DeviceTestSession(GamepadInputSource pGamepadSource, MicrophoneInputSource pMicrophoneSource, Consumer<SynthCommand> pCommandConsumer, Consumer<String> pStatusConsumer)` — configures sources and callbacks.
+Connects source events to Bridge instruments and a command consumer, and reports gamepad direction changes and microphone levels to the UI. `src/app/logic/DeviceTestSession.java`
+- `DeviceTestSession(GamepadInputSource pGamepadSource, MicrophoneInputSource pMicrophoneSource, Consumer<SynthCommand> pCommandConsumer, Consumer<Float> pMicrophoneLevelConsumer, Consumer<String> pStatusConsumer)` — configures sources, command, microphone-level, and status callbacks.
 - `start()` — starts gamepad and microphone input and publishes statuses.
 - `acceptTabletInput(TabletInput pInput)` — routes tablet input.
 - `close()` — closes input sources and ignores later commands.
@@ -81,7 +81,7 @@ Adapter registering the test session with the GLFW runtime. `src/app/logic/GlfwG
 - `close()` — unregisters the source.
 
 ### GlfwGamepadRuntime
-Runs GLFW initialization, polling, and cleanup on its creating main thread. `src/app/logic/GlfwGamepadRuntime.java`
+Runs GLFW initialization, polling, and cleanup on its creating main thread; supports mapped gamepads and generic joysticks with two directional axes. `src/app/logic/GlfwGamepadRuntime.java`
 - `GlfwGamepadRuntime()` — records the owner thread.
 - `registerSource(Consumer<GamepadDirection> pInputConsumer, Consumer<String> pStatusConsumer)` — schedules a listener.
 - `unregisterSource(long pSourceId)` — schedules listener removal.

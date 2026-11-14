@@ -21,21 +21,30 @@ class DeviceTestSessionTest {
         FakeGamepadSource gamepadSource = new FakeGamepadSource();
         FakeMicrophoneSource microphoneSource = new FakeMicrophoneSource();
         List<SynthCommand> commands = new ArrayList<>();
+        List<Float> microphoneLevels = new ArrayList<>();
+        List<String> statuses = new ArrayList<>();
         DeviceTestSession session = new DeviceTestSession(
                 gamepadSource,
                 microphoneSource,
                 commands::add,
-                pStatus -> { });
+                microphoneLevels::add,
+                statuses::add);
 
         session.start();
         gamepadSource.inputConsumer.accept(GamepadDirection.RIGHT);
+        gamepadSource.inputConsumer.accept(GamepadDirection.RIGHT);
+        gamepadSource.inputConsumer.accept(GamepadDirection.NONE);
         microphoneSource.volumeConsumer.accept(0.5f);
+        microphoneSource.volumeConsumer.accept(0.51f);
         session.acceptTabletInput(new TabletInput(0.5f, 0.25f, true));
 
         assertEquals(3, commands.size());
         assertEquals(43, assertInstanceOf(BassCommand.class, commands.get(0)).getNote());
         assertEquals(0.5f, assertInstanceOf(OrganCommand.class, commands.get(1)).getVolume());
         assertEquals(60, assertInstanceOf(PianoCommand.class, commands.get(2)).getNote());
+        assertEquals(List.of(0.5f, 0.51f), microphoneLevels);
+        assertEquals(1, statuses.stream().filter("Mando: derecha"::equals).count());
+        assertEquals(1, statuses.stream().filter("Mando: centrado"::equals).count());
 
         session.close();
         assertEquals(1, gamepadSource.closeCalls);

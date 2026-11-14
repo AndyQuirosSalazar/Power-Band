@@ -15,22 +15,26 @@ public final class DeviceTestSession implements AutoCloseable {
     private final GamepadInputSource gamepadSource;
     private final MicrophoneInputSource microphoneSource;
     private final Consumer<SynthCommand> commandConsumer;
+    private final Consumer<Float> microphoneLevelConsumer;
     private final Consumer<String> statusConsumer;
     private final GamepadInstrument gamepadInstrument = new GamepadInstrument();
     private final TabletInstrument tabletInstrument = new TabletInstrument();
     private final MicrophoneInstrument microphoneInstrument = new MicrophoneInstrument();
 
     private boolean started;
+    private GamepadDirection lastReportedGamepadDirection = GamepadDirection.NONE;
     private volatile boolean closed;
 
     public DeviceTestSession(
             GamepadInputSource pGamepadSource,
             MicrophoneInputSource pMicrophoneSource,
             Consumer<SynthCommand> pCommandConsumer,
+            Consumer<Float> pMicrophoneLevelConsumer,
             Consumer<String> pStatusConsumer) {
         gamepadSource = Objects.requireNonNull(pGamepadSource, "pGamepadSource");
         microphoneSource = Objects.requireNonNull(pMicrophoneSource, "pMicrophoneSource");
         commandConsumer = Objects.requireNonNull(pCommandConsumer, "pCommandConsumer");
+        microphoneLevelConsumer = Objects.requireNonNull(pMicrophoneLevelConsumer, "pMicrophoneLevelConsumer");
         statusConsumer = Objects.requireNonNull(pStatusConsumer, "pStatusConsumer");
     }
 
@@ -41,13 +45,44 @@ public final class DeviceTestSession implements AutoCloseable {
         started = true;
         statusConsumer.accept("Mando: buscando dispositivo compatible");
         gamepadSource.start(
-                pDirection -> dispatch(gamepadInstrument.translate(pDirection)),
+                this::acceptGamepadDirection,
                 pStatus -> statusConsumer.accept("Mando: " + pStatus));
         statusConsumer.accept("Micrófono: abriendo entrada predeterminada");
         microphoneSource.start(
-                pVolume -> dispatch(microphoneInstrument.translate(pVolume)),
+                this::acceptMicrophoneVolume,
                 pStatus -> statusConsumer.accept("Micrófono: " + pStatus));
         statusConsumer.accept("Tableta: use el lápiz en el área de prueba");
+    }
+
+    private void acceptMicrophoneVolume(Float pVolume) {
+        Optional<SynthCommand> command = microphoneInstrument.translate(pVolume);
+        if (closed) {
+            return;
+        }
+        microphoneLevelConsumer.accept(pVolume);
+        dispatch(command);
+    }
+
+    private void acceptGamepadDirection(GamepadDirection pDirection) {
+        Optional<SynthCommand> command = gamepadInstrument.translate(pDirection);
+        if (closed) {
+            return;
+        }
+        if (pDirection != lastReportedGamepadDirection) {
+            lastReportedGamepadDirection = pDirection;
+            statusConsumer.accept("Mando: " + directionLabel(pDirection));
+        }
+        dispatch(command);
+    }
+
+    private static String directionLabel(GamepadDirection pDirection) {
+        return switch (pDirection) {
+            case LEFT -> "izquierda";
+            case RIGHT -> "derecha";
+            case UP -> "arriba";
+            case DOWN -> "abajo";
+            case NONE -> "centrado";
+        };
     }
 
     public void acceptTabletInput(TabletInput pInput) {

@@ -12,8 +12,13 @@ Verifies direction, tablet, and microphone-to-command mappings. `src/test/app/br
 - `mapsMicrophoneVolumeToQuantizedOrganAmplitudeAndSilence()` — checks volume quantization and note-off at silence.
 
 ### DeviceTestSessionTest
-Verifies that each source reaches only its assigned synth command and that sources close. `src/test/app/logic/DeviceTestSessionTest.java`
+Verifies that each source reaches only its assigned synth command, gamepad direction changes are reported once, microphone levels are reported for every sample, and sources close. `src/test/app/logic/DeviceTestSessionTest.java`
 - `routesEachSourceToOnlyItsAssignedSynthAndClosesSources()` — feeds fake inputs and checks emitted commands.
+
+### GlfwGamepadRuntimeTest
+Verifies direction mapping for generic joystick axes and rejects incomplete axis data. `src/test/app/logic/GlfwGamepadRuntimeTest.java`
+- `mapsTheFirstTwoAxesOfAnUnmappedJoystick()` — maps the first two axes to a directional input.
+- `rejectsJoysticksWithoutTwoAxes()` — rejects axis buffers with fewer than two axes.
 
 ### MainMenuTest
 Verifies menu title, button order, visibility, and actions. `src/test/app/ui/MainMenuTest.java`
