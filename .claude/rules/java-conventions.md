@@ -1,6 +1,7 @@
 ---
 paths:
-  - "src/game/**/*.java"
+  - "src/app/**/*.java"
+  - "src/test/**/*.java"
 ---
 - Use Java only. Target the JDK version declared in `pom.xml` 
 - The entrypoint (`public static void main`) stays in `src/app/powerBand.java`.

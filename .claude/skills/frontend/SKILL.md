@@ -2,8 +2,8 @@
 name: frontend
 description: >-
   Map of the implemented frontend, the modules that exist, and the files
-  to open before editing. Use when changing UI, client code, Swing/JavaFX/
-  console UI classes, or frontend behavior.
+  to open before editing. Use when changing the Java Swing UI or frontend
+  behavior.
 ---
 # Frontend
 Before searching the frontend tree, read `references/map.md`.
