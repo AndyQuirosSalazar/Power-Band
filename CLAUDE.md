@@ -1,5 +1,28 @@
 # Project description
+Power Band es un programa de creación e interacción musical que permite crear, guardar y reproducir música generada mediante la invocación, desde Java, de sintetizadores hechos en SuperCollider.
 
+Componentes
+Sintetizadores (SuperCollider). Tres synths en myband.sc: classicPiano, stringBass y organ70s. Java los invoca mediante BandClient, que envía mensajes OSC por UDP al servidor de SuperCollider (127.0.0.1:57110).
+Instrumentos. Dispositivos físicos conectados a Java, un dispositivo distinto por synth. No pueden ser teclado ni mouse.
+Mando (stick) controla classicPiano.
+Tableta de dibujo controla organ70s. Solo lee dónde está el lápiz y si está tocando o flotando.
+Micrófono controla stringBass. Solo lee el volumen.
+Editor musical. Monitorea los comandos que los instrumentos envían a SuperCollider, y permite grabar, almacenar, cargar y reproducir música.
+Editor musical
+Grabar: guarda todos los comandos y sus tiempos en un archivo en tiempo real. Al terminar, se asigna un nombre único a la música.
+Cargar: muestra las músicas disponibles en orden cronológico (desde recordings.list).
+Reproducir: busca la grabación por nombre con búsqueda binaria en disco y envía los comandos respetando los tiempos grabados, para que suene idéntica.
+Archivos
+Archivo    Contenido
+recordings.music    Todas las grabaciones, una tras otra, cada una con encabezado (nombre, punto de inicio y punto de terminación).
+recordings.index    Índice de las músicas grabadas, ordenado por nombre.
+recordings.list    Nombre y fecha y hora de cada grabación.
+
+Los registros de recordings.music y recordings.index son de tamaño fijo, escritos en binario. El índice se ordena con Balanced Merge Sort sobre archivos en disco; no se ordenan ni recorren arreglos en memoria.
+
+Patrón de diseño
+
+Bridge: la jerarquía de instrumentos (abstracción) está separada de la jerarquía de comandos que invocan a los synths (implementación).
 
 # Tech stack
 - java 26.0.2
