@@ -11,6 +11,13 @@ Verifies direction, tablet, and microphone-to-command mappings. `src/test/app/br
 - `mapsTabletCoordinatesAndPlaysOnlyWhileTouching()` — checks normalized position mapping, chord quality, and hover silence.
 - `mapsMicrophoneVolumeToQuantizedOrganAmplitudeAndSilence()` — checks volume quantization and note-off at silence.
 
+### BandClientTest
+Verifies OSC synth routing and note lifecycle with a UDP loopback receiver. `src/test/app/supercollider/BandClientTest.java`
+- `bassCommandSendsStringBassWithTheRequestedNoteAndDuration()` — checks the bass synth, note, and duration.
+- `pianoCommandSendsClassicPianoAndTheRequestedChordQuality()` — checks piano synth controls and chord quality.
+- `organCommandSendsOrganControlsAndStopsItsActiveNoteAtSilence()` — checks organ partials, amplitudes, and note-off.
+- `closingClientStopsActiveOrganAndClosesItsSocket()` — checks organ cleanup and that a closed client cannot send.
+
 ### DeviceTestSessionTest
 Verifies that each source reaches only its assigned synth command, gamepad direction changes are reported once, microphone levels are reported for every sample, and sources close. `src/test/app/logic/DeviceTestSessionTest.java`
 - `routesEachSourceToOnlyItsAssignedSynthAndClosesSources()` — feeds fake inputs and checks emitted commands.
