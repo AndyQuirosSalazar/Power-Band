@@ -1,7 +1,7 @@
 ---
 id: ft-6
 layer: testing
-status: draft
+status: approved
 ---
 
 # Pruebas de persistencia de grabaciones

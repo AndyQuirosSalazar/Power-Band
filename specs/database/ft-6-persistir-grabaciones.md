@@ -1,7 +1,7 @@
 ---
 id: ft-6
 layer: database
-status: draft
+status: approved
 ---
 
 # Persistir grabaciones

@@ -15,4 +15,6 @@ public interface IConstants {
     public static final int SYNTH_ID_PIANO = 2;
     public static final int SYNTH_ID_ORGAN = 3;
     public static final int COMMAND_RECORD_BYTES = 48;
+    public static final int RECORDING_NAME_BYTES = 32;
+    public static final int RECORDING_INDEX_RECORD_BYTES = 40;
 }

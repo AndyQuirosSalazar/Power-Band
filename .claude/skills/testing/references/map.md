@@ -11,6 +11,12 @@ Verifies fixed-width big-endian serialization, reading, and record validation. `
 - `rejectsInvalidRecordLengthAndNonzeroReservedBytes()` — checks malformed record bytes.
 - `rejectsInvalidCommandFields()` — checks invalid time, synth ID, and major flag.
 
+### BalancedMergeSortTest
+Verifies external sorting of fixed-width index records and temporary-file handling. `src/test/app/sorting/BalancedMergeSortTest.java`
+- `sortsSeveralDiskRunsAndPreservesOffsets()` — checks ordering over multiple runs and retained offsets.
+- `handlesEmptyAndSingleRecordIndexes()` — checks zero- and one-entry files.
+- `rejectsMisalignedIndexWithoutChangingItOrLeavingTemporaryFiles()` — checks corruption handling.
+
 ### SynthCommandSerializationTest
 Verifies each Bridge synth command converts itself to the correct recording record. `src/test/app/bridge/commands/SynthCommandSerializationTest.java`
 - `createsRecordsForEachSynthWithoutTypeInspection()` — checks synth IDs and command values.
