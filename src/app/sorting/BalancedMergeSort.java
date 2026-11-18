@@ -170,7 +170,7 @@ public final class BalancedMergeSort {
         byte[] recordB = remainingB > 0 ? readRecord(pInputB, pRecordSize) : null;
 
         while (remainingA > 0 || remainingB > 0) {
-            if (remainingA == 0 || (remainingB > 0 && compareNames(recordA, recordB) > 0)) {
+            if (remainingA == 0 || (remainingB > 0 && compareIndexNames(recordA, recordB) > 0)) {
                 pOutput.write(recordB);
                 remainingB--;
                 recordB = remainingB > 0 ? readRecord(pInputB, pRecordSize) : null;
@@ -182,7 +182,13 @@ public final class BalancedMergeSort {
         }
     }
 
-    private static int compareNames(byte[] pRecordA, byte[] pRecordB) {
+    public static int compareIndexNames(byte[] pRecordA, byte[] pRecordB) {
+        Objects.requireNonNull(pRecordA, "pRecordA");
+        Objects.requireNonNull(pRecordB, "pRecordB");
+        if (pRecordA.length != IConstants.RECORDING_INDEX_RECORD_BYTES
+                || pRecordB.length != IConstants.RECORDING_INDEX_RECORD_BYTES) {
+            throw new IllegalArgumentException("index records must have the fixed record width");
+        }
         for (int index = 0; index < IConstants.RECORDING_NAME_BYTES; index++) {
             int valueA = Byte.toUnsignedInt(pRecordA[index]);
             int valueB = Byte.toUnsignedInt(pRecordB[index]);

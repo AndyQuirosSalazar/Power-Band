@@ -5,6 +5,17 @@ After you change this layer, update this file so the next run stays current.
 Source: `src/test/app`
 
 ## Test classes
+### RecordingStorageTest
+Verifies binary persistence, disk-based search, initialization decisions, and malformed/incomplete data handling. `src/test/app/storage/RecordingStorageTest.java`
+- `initializesEmptyLibraryAndPersistsBinaryAndChronologicalRecords()` — checks file creation, header offsets, command bytes, index record, and list timestamp.
+- `searchesSortedIndexAndRejectsDuplicateWithoutChangingAnyFile()` — checks external index ordering, case sensitivity, search, and duplicate immutability.
+- `createsOnlyMissingFilesWhenSelected()` — checks preservation of existing files when creating missing ones.
+- `resetsOnlyRecordingFilesWhenSelected()` — checks reset of the three recording files only.
+- `cancelsPartialInitializationWithoutChangingFiles()` — checks cancellation leaves the partial set unchanged.
+- `rejectsMisalignedMusicAndIndexFilesWithoutRepairingThem()` — checks corrupt binary file sizes are rejected without repair.
+- `rejectsInvalidNamesBeforeChangingFiles()` — checks invalid ASCII names fail without writes.
+- `rejectsIncompleteListLineBeforeChangingBinaryFiles()` — checks incomplete list entries fail before binary data changes.
+
 ### CommandRecordTest
 Verifies fixed-width big-endian serialization, reading, and record validation. `src/test/app/model/CommandRecordTest.java`
 - `serializesAndReadsFixedWidthBigEndianRecord()` — checks the 48-byte layout, zero padding, and round-trip.
@@ -36,11 +47,11 @@ Verifies OSC synth routing and note lifecycle with a UDP loopback receiver. `src
 - `closingClientStopsActiveOrganAndClosesItsSocket()` — checks organ cleanup and that a closed client cannot send.
 
 ### DeviceTestSessionTest
-Verifies that each source reaches only its assigned synth command, gamepad direction changes are reported once, microphone levels are reported for every sample, and sources close. `src/test/app/logic/DeviceTestSessionTest.java`
+Verifies device routing, source cleanup, and reported input levels. `src/test/app/logic/DeviceTestSessionTest.java`
 - `routesEachSourceToOnlyItsAssignedSynthAndClosesSources()` — feeds fake inputs and checks emitted commands.
 
 ### GlfwGamepadRuntimeTest
-Verifies direction mapping for generic joystick axes and rejects incomplete axis data. `src/test/app/logic/GlfwGamepadRuntimeTest.java`
+Verifies generic joystick direction mapping and rejects incomplete axis data. `src/test/app/logic/GlfwGamepadRuntimeTest.java`
 - `mapsTheFirstTwoAxesOfAnUnmappedJoystick()` — maps the first two axes to a directional input.
 - `rejectsJoysticksWithoutTwoAxes()` — rejects axis buffers with fewer than two axes.
 
