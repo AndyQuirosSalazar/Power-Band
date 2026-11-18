@@ -11,7 +11,8 @@ Source: `src/app/bridge`, `src/app/logic`, `src/app/model`, `src/app/supercollid
 
 ## Classes
 ### SynthCommand
-Command abstraction executed through `BandClient`. `src/app/bridge/commands/SynthCommand.java`
+Bridge command abstraction that executes through `BandClient` and converts itself to a fixed-width recording record. `src/app/bridge/commands/SynthCommand.java`
+- `toCommandRecord(long pRelativeTimeMillis)` — returns this command as a typed record with its recording-relative time.
 - `execute(BandClient pBandClient)` — sends the command to its synth.
 
 ### BassCommand
@@ -19,6 +20,7 @@ Timed bass note. `src/app/bridge/commands/BassCommand.java`
 - `BassCommand(int pNote, int pDurationMillis)` — validates and stores the MIDI note and duration.
 - `getNote()` — returns the note.
 - `getDurationMillis()` — returns the duration.
+- `toCommandRecord(long pRelativeTimeMillis)` — creates a bass record with unused fields set to zero.
 - `execute(BandClient pBandClient)` — calls `playBass`.
 
 ### PianoCommand
@@ -27,13 +29,32 @@ Timed piano chord. `src/app/bridge/commands/PianoCommand.java`
 - `getNote()` — returns the note.
 - `getDurationMillis()` — returns the duration.
 - `isMajor()` — returns the chord quality.
+- `toCommandRecord(long pRelativeTimeMillis)` — creates a piano record with its chord quality.
 - `execute(BandClient pBandClient)` — calls `playPiano`.
 
 ### OrganCommand
 Volume-controlled organ note. `src/app/bridge/commands/OrganCommand.java`
 - `OrganCommand(float pVolume)` — validates normalized volume.
 - `getVolume()` — returns the volume.
+- `toCommandRecord(long pRelativeTimeMillis)` — creates an organ record with the fixed MIDI note and volume.
 - `execute(BandClient pBandClient)` — starts or stops the organ note.
+
+### CommandRecord
+Validated fixed-width representation of a synth command and its relative recording time. `src/app/model/CommandRecord.java`
+- `CommandRecord(long pRelativeTimeMillis, int pSynthId, int pNote, int pDurationMillis, int pMajor, float pVolume)` — validates the command fields.
+- `getRelativeTimeMillis()` — returns the command's relative time.
+- `getSynthId()` — returns the synth identifier.
+- `getNote()` — returns the MIDI note.
+- `getDurationMillis()` — returns the duration.
+- `getMajor()` — returns the 0/1 chord-quality value.
+- `getVolume()` — returns normalized volume.
+- `toByteArray()` — serializes the record to 48 big-endian bytes with zero-filled reserved space.
+- `fromByteArray(byte[] pBytes)` — reads and validates a 48-byte record.
+
+### IConstants
+Shared UI and recording format constants. `src/app/util/IConstants.java`
+- `SYNTH_ID_BASS`, `SYNTH_ID_PIANO`, `SYNTH_ID_ORGAN` — stable identifiers stored in command records.
+- `COMMAND_RECORD_BYTES` — fixed command-record width in bytes.
 
 ### Instrument<T>
 Bridge abstraction translating input into an optional synth command. `src/app/bridge/instruments/Instrument.java`

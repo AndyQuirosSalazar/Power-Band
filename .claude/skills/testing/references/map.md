@@ -5,6 +5,17 @@ After you change this layer, update this file so the next run stays current.
 Source: `src/test/app`
 
 ## Test classes
+### CommandRecordTest
+Verifies fixed-width big-endian serialization, reading, and record validation. `src/test/app/model/CommandRecordTest.java`
+- `serializesAndReadsFixedWidthBigEndianRecord()` — checks the 48-byte layout, zero padding, and round-trip.
+- `rejectsInvalidRecordLengthAndNonzeroReservedBytes()` — checks malformed record bytes.
+- `rejectsInvalidCommandFields()` — checks invalid time, synth ID, and major flag.
+
+### SynthCommandSerializationTest
+Verifies each Bridge synth command converts itself to the correct recording record. `src/test/app/bridge/commands/SynthCommandSerializationTest.java`
+- `createsRecordsForEachSynthWithoutTypeInspection()` — checks synth IDs and command values.
+- `rejectsNegativeRelativeTimeForEveryCommand()` — checks invalid relative-time rejection.
+
 ### DeviceInstrumentTest
 Verifies direction, tablet, and microphone-to-command mappings. `src/test/app/bridge/instruments/DeviceInstrumentTest.java`
 - `mapsOnlyDirectionalGamepadChangesToBassNotes()` — checks directional filtering and bass notes.
