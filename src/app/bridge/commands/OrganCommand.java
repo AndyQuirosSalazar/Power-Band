@@ -1,6 +1,8 @@
 package app.bridge.commands;
 
+import app.model.CommandRecord;
 import app.supercollider.BandClient;
+import app.util.IConstants;
 import java.io.IOException;
 
 public final class OrganCommand implements SynthCommand {
@@ -20,6 +22,17 @@ public final class OrganCommand implements SynthCommand {
 
     public float getVolume() {
         return volume;
+    }
+
+    @Override
+    public CommandRecord toCommandRecord(long pRelativeTimeMillis) {
+        return new CommandRecord(
+                pRelativeTimeMillis,
+                IConstants.SYNTH_ID_ORGAN,
+                MIDI_NOTE,
+                0,
+                0,
+                volume);
     }
 
     @Override
