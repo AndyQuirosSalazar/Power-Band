@@ -2,91 +2,87 @@
 
 After you change this layer, update this file so the next run stays current.
 
-Source: `src/app/bridge`, `src/app/logic`, `src/app/model`, `src/app/supercollider`
+Source: `src/app/bridge`, `src/app/logic`, `src/app/model`, `src/app/supercollider`, `src/app/util`
 
 ## Implemented
-- Bridge instruments and synth commands for device testing.
-- GLFW gamepad input, Java Sound volume input, and session routing.
-- OSC client for SuperCollider: `src/app/supercollider/BandClient.java`.
+- Bridge instruments translate allowed device input into synth commands.
+- Input sessions route gamepad, microphone-level and tablet signals.
+- Recording capture timestamps successful synth commands; save service validates and persists completed sessions.
+- `BandClient` sends OSC messages to SuperCollider.
 
 ## Classes
 ### SynthCommand
-Bridge command abstraction that executes through `BandClient` and converts itself to a fixed-width recording record. `src/app/bridge/commands/SynthCommand.java`
-- `toCommandRecord(long pRelativeTimeMillis)` — returns this command as a typed record with its recording-relative time.
+Bridge command contract. `src/app/bridge/commands/SynthCommand.java`
+- `toCommandRecord(long pRelativeTimeMillis)` — converts a synth command to a recording record.
 - `execute(BandClient pBandClient)` — sends the command to its synth.
 
 ### BassCommand
 Timed bass note. `src/app/bridge/commands/BassCommand.java`
-- `BassCommand(int pNote, int pDurationMillis)` — validates and stores the MIDI note and duration.
-- `getNote()` — returns the note.
-- `getDurationMillis()` — returns the duration.
-- `toCommandRecord(long pRelativeTimeMillis)` — creates a bass record with unused fields set to zero.
-- `execute(BandClient pBandClient)` — calls `playBass`.
+- `BassCommand(int pNote, int pDurationMillis)` — creates a bass note command.
+- `getNote()` — returns its MIDI note.
+- `getDurationMillis()` — returns its duration.
+- `toCommandRecord(long pRelativeTimeMillis)` — serializes its values to a recording record.
+- `execute(BandClient pBandClient)` — plays the bass note.
 
 ### PianoCommand
 Timed piano chord. `src/app/bridge/commands/PianoCommand.java`
-- `PianoCommand(int pNote, int pDurationMillis, boolean pMajor)` — validates and stores chord settings.
-- `getNote()` — returns the note.
-- `getDurationMillis()` — returns the duration.
-- `isMajor()` — returns the chord quality.
-- `toCommandRecord(long pRelativeTimeMillis)` — creates a piano record with its chord quality.
-- `execute(BandClient pBandClient)` — calls `playPiano`.
+- `PianoCommand(int pNote, int pDurationMillis, boolean pMajor)` — creates a chord command.
+- `getNote()` — returns its MIDI note.
+- `getDurationMillis()` — returns its duration.
+- `isMajor()` — returns its chord quality.
+- `toCommandRecord(long pRelativeTimeMillis)` — serializes its values to a recording record.
+- `execute(BandClient pBandClient)` — plays the piano chord.
 
 ### OrganCommand
 Volume-controlled organ note. `src/app/bridge/commands/OrganCommand.java`
-- `OrganCommand(float pVolume)` — validates normalized volume.
-- `getVolume()` — returns the volume.
-- `toCommandRecord(long pRelativeTimeMillis)` — creates an organ record with the fixed MIDI note and volume.
+- `OrganCommand(float pVolume)` — creates an organ command.
+- `getVolume()` — returns its normalized volume.
+- `toCommandRecord(long pRelativeTimeMillis)` — serializes its values to a recording record.
 - `execute(BandClient pBandClient)` — starts or stops the organ note.
 
-### CommandRecord
-Validated fixed-width representation of a synth command and its relative recording time. `src/app/model/CommandRecord.java`
-- `CommandRecord(long pRelativeTimeMillis, int pSynthId, int pNote, int pDurationMillis, int pMajor, float pVolume)` — validates the command fields.
-- `getRelativeTimeMillis()` — returns the command's relative time.
-- `getSynthId()` — returns the synth identifier.
-- `getNote()` — returns the MIDI note.
-- `getDurationMillis()` — returns the duration.
-- `getMajor()` — returns the 0/1 chord-quality value.
-- `getVolume()` — returns normalized volume.
-- `toByteArray()` — serializes the record to 48 big-endian bytes with zero-filled reserved space.
-- `fromByteArray(byte[] pBytes)` — reads and validates a 48-byte record.
-
-### IConstants
-Shared UI and recording format constants. `src/app/util/IConstants.java`
-- `SYNTH_ID_BASS`, `SYNTH_ID_PIANO`, `SYNTH_ID_ORGAN` — stable identifiers stored in command records.
-- `COMMAND_RECORD_BYTES` — fixed command-record width in bytes.
-
 ### Instrument<T>
-Bridge abstraction translating input into an optional synth command. `src/app/bridge/instruments/Instrument.java`
-- `translate(T pInput)` — returns the command for an input, if one is needed.
+Bridge abstraction for translating input. `src/app/bridge/instruments/Instrument.java`
+- `translate(T pInput)` — returns an optional synth command.
 
 ### GamepadInstrument
-Maps directional transitions to bass notes. `src/app/bridge/instruments/GamepadInstrument.java`
+Maps directional changes to bass notes. `src/app/bridge/instruments/GamepadInstrument.java`
 - `directionFromAxes(float pHorizontal, float pVertical)` — returns the dominant direction above threshold.
-- `translate(GamepadDirection pDirection)` — emits one bass command per direction change.
+- `translate(GamepadDirection pDirection)` — emits a command for a new direction.
 
 ### TabletInstrument
-Maps tablet-area position and touch state to piano chords. `src/app/bridge/instruments/TabletInstrument.java`
-- `translate(TabletInput pInput)` — emits a piano command while touching; hover does not play.
+Maps tablet coordinates and touch to piano chords. `src/app/bridge/instruments/TabletInstrument.java`
+- `translate(TabletInput pInput)` — emits a chord only while touching.
 
 ### MicrophoneInstrument
-Quantizes volume into organ amplitudes. `src/app/bridge/instruments/MicrophoneInstrument.java`
-- `translate(Float pVolume)` — emits a command when the volume level changes.
+Quantizes volume into organ commands. `src/app/bridge/instruments/MicrophoneInstrument.java`
+- `translate(Float pVolume)` — emits a command when its quantized level changes.
+
+### CommandRecord
+Validated fixed-width synth command and relative time. `src/app/model/CommandRecord.java`
+- `CommandRecord(long pRelativeTimeMillis, int pSynthId, int pNote, int pDurationMillis, int pMajor, float pVolume)` — validates recording fields.
+- `getRelativeTimeMillis()` — returns the event time.
+- `getSynthId()` — returns the synth identifier.
+- `getNote()` — returns the MIDI note.
+- `getDurationMillis()` — returns the command duration.
+- `getMajor()` — returns the chord-quality flag.
+- `getVolume()` — returns normalized volume.
+- `toByteArray()` — writes the 48-byte big-endian record.
+- `fromByteArray(byte[] pBytes)` — reads and validates a record.
 
 ### GamepadDirection
 Directional axis states, including `NONE`. `src/app/model/GamepadDirection.java`
 
 ### TabletInput
-Normalized pointer coordinates and touch state. `src/app/model/TabletInput.java`
-- `TabletInput(float pX, float pY, boolean pTouching)` — validates normalized position.
+Normalized pointer coordinates and contact state. `src/app/model/TabletInput.java`
+- `TabletInput(float pX, float pY, boolean pTouching)` — validates normalized coordinates.
 - `getX()` — returns normalized X.
 - `getY()` — returns normalized Y.
 - `isTouching()` — returns contact state.
 
 ### DeviceTestSession
-Connects source events to Bridge instruments and a command consumer, and reports gamepad direction changes and microphone levels to the UI. `src/app/logic/DeviceTestSession.java`
-- `DeviceTestSession(GamepadInputSource pGamepadSource, MicrophoneInputSource pMicrophoneSource, Consumer<SynthCommand> pCommandConsumer, Consumer<Float> pMicrophoneLevelConsumer, Consumer<String> pStatusConsumer)` — configures sources, command, microphone-level, and status callbacks.
-- `start()` — starts gamepad and microphone input and publishes statuses.
+Routes device events through instruments to a command consumer. `src/app/logic/DeviceTestSession.java`
+- `DeviceTestSession(GamepadInputSource pGamepadSource, MicrophoneInputSource pMicrophoneSource, Consumer<SynthCommand> pCommandConsumer, Consumer<Float> pMicrophoneLevelConsumer, Consumer<String> pStatusConsumer)` — configures input sources and callbacks.
+- `start()` — starts input sources and reports status.
 - `acceptTabletInput(TabletInput pInput)` — routes tablet input.
 - `close()` — closes input sources and ignores later commands.
 
@@ -96,18 +92,18 @@ Gamepad source contract. `src/app/logic/GamepadInputSource.java`
 - `close()` — releases the source.
 
 ### GlfwGamepadInputSource
-Adapter registering the test session with the GLFW runtime. `src/app/logic/GlfwGamepadInputSource.java`
-- `GlfwGamepadInputSource(GlfwGamepadRuntime pRuntime)` — binds the source to the main-thread runtime.
+Adapter between the input contract and GLFW runtime. `src/app/logic/GlfwGamepadInputSource.java`
+- `GlfwGamepadInputSource(GlfwGamepadRuntime pRuntime)` — binds the source to the runtime.
 - `start(Consumer<GamepadDirection> pInputConsumer, Consumer<String> pStatusConsumer)` — registers callbacks.
 - `close()` — unregisters the source.
 
 ### GlfwGamepadRuntime
-Runs GLFW initialization, polling, and cleanup on its creating main thread; supports mapped gamepads and generic joysticks with two directional axes. `src/app/logic/GlfwGamepadRuntime.java`
+Polls GLFW on its creating thread. `src/app/logic/GlfwGamepadRuntime.java`
 - `GlfwGamepadRuntime()` — records the owner thread.
-- `registerSource(Consumer<GamepadDirection> pInputConsumer, Consumer<String> pStatusConsumer)` — schedules a listener.
-- `unregisterSource(long pSourceId)` — schedules listener removal.
-- `runWhile(BooleanSupplier pKeepRunning)` — polls GLFW until the application stops.
-- `close()` — terminates GLFW and releases callbacks.
+- `registerSource(Consumer<GamepadDirection> pInputConsumer, Consumer<String> pStatusConsumer)` — registers a listener.
+- `unregisterSource(long pSourceId)` — removes a listener.
+- `runWhile(BooleanSupplier pKeepRunning)` — polls until the application stops.
+- `close()` — releases GLFW resources.
 
 ### MicrophoneInputSource
 Microphone level-source contract. `src/app/logic/MicrophoneInputSource.java`
@@ -115,20 +111,37 @@ Microphone level-source contract. `src/app/logic/MicrophoneInputSource.java`
 - `close()` — stops capture.
 
 ### JavaSoundMicrophoneInputSource
-Captures temporary PCM buffers from the configured/default recording mixer and reports RMS only. `src/app/logic/JavaSoundMicrophoneInputSource.java`
-- `start(Consumer<Float> pVolumeConsumer, Consumer<String> pStatusConsumer)` — starts audio capture on a daemon thread.
-- `close()` — stops and closes the target line.
+Reports RMS from temporary PCM buffers. `src/app/logic/JavaSoundMicrophoneInputSource.java`
+- `start(Consumer<Float> pVolumeConsumer, Consumer<String> pStatusConsumer)` — starts microphone capture on a daemon thread.
+- `close()` — stops and closes the audio line.
+
+### RecordingCommandCapture
+Converts dispatched synth commands into an ordered timed recording. `src/app/logic/RecordingCommandCapture.java`
+- `start()` — starts a new capture period.
+- `record(SynthCommand pCommand)` — records a command with its relative time.
+- `finish()` — stops capture and returns an immutable command list.
+
+### RecordingSaveService
+Validates a name and coordinates library initialization and storage. `src/app/logic/RecordingSaveService.java`
+- `RecordingSaveService(RecordingLibrary pLibrary)` — configures the persistence dependency.
+- `save(String pRawName, List<CommandRecord> pCommands, Instant pCreatedAt, PartialFilesDecision pPartialFilesDecision)` — validates and saves, or returns the required user decision.
+- `normalizeName(String pRawName)` — removes outer ASCII spaces.
 
 ### BandClient
-Sends OSC messages to SuperCollider. `src/app/supercollider/BandClient.java`
+Sends synth control messages to SuperCollider. `src/app/supercollider/BandClient.java`
 - `BandClient()` — connects to the default host and port.
-- `BandClient(String host, int port)` — connects to the specified host and port.
+- `BandClient(String host, int port)` — connects to the supplied host and port.
 - `playPiano(int note, int durMs)` — plays a major piano chord.
-- `playPiano(int note, int durMs, boolean major)` — plays a major or minor piano chord.
+- `playPiano(int note, int durMs, boolean major)` — plays a major or minor chord.
 - `playBass(int note, int durMs)` — plays a bass note.
 - `noteOn(int note)` — starts an organ note with default partials.
-- `noteOn(int note, float[] ratios, float[] amps)` — starts an organ note with specified partials and amplitudes.
-- `noteOff(int note)` — stops the active organ note.
+- `noteOn(int note, float[] ratios, float[] amps)` — starts an organ note with supplied partials and amplitudes.
+- `noteOff(int note)` — stops an active organ note.
 - `allNotesOff()` — stops all active organ notes.
-- `close()` — releases active organ notes and closes the UDP socket.
+- `close()` — releases the client socket and active organ notes.
 - `main(String[] args)` — demonstrates synth playback.
+
+### IConstants
+Shared UI labels and synth/recording format values. `src/app/util/IConstants.java`
+- `BUTTON_RECORD`, `BUTTON_FINISH_RECORDING`, `BUTTON_SAVE`, `BUTTON_CANCEL` — labels used by the recording workflow.
+- `SYNTH_ID_BASS`, `SYNTH_ID_PIANO`, `SYNTH_ID_ORGAN` — synth identifiers stored in command records.

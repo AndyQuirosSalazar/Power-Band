@@ -5,35 +5,42 @@ After you change this layer, update this file so the next run stays current.
 Source: `src/app/ui`
 
 ## Implemented
-- Swing menu and device-test window: `src/app/ui/MainMenu.java`, `src/app/ui/DeviceTestWindow.java`
-- Device-test window displays each gamepad direction received: `src/app/ui/DeviceTestWindow.java`
-- Device-test window displays the live normalized microphone signal as a level meter: `src/app/ui/DeviceTestWindow.java`
-- Device-test window displays tablet contact state and normalized X/Y coordinates: `src/app/ui/DeviceTestWindow.java`
-- Tablet input area, using local AWT mouse events as pen input: `src/app/ui/TabletInputPanel.java`
+- Swing menu, device-test window, and local tablet input panel.
+- Recording window captures instrument commands and opens the asynchronous save flow.
+- Save panel validates names and presents storage initialization choices and results.
 
 ## Entrypoints
-- `src/app/powerBand.java` — creates the menu and runs the GLFW polling loop on the main thread.
+- `src/app/powerBand.java` — creates the main menu and opens device-test and recording windows.
 
 ## Classes
 ### MainMenu
-Displays the title and four buttons. `src/app/ui/MainMenu.java`
-- `MainMenu(Runnable pExitAction)` — builds the menu with no test callback.
-- `MainMenu(Runnable pExitAction, Runnable pTestAction)` — wires `Probar` and `Salir` actions.
+Displays the title and four actions. `src/app/ui/MainMenu.java`
+- `MainMenu(Runnable pExitAction)` — builds a menu with default test and recording actions.
+- `MainMenu(Runnable pExitAction, Runnable pTestAction)` — wires the test action.
+- `MainMenu(Runnable pExitAction, Runnable pTestAction, Runnable pRecordAction)` — wires the test and recording actions.
 
 ### DeviceTestWindow
-Shows device statuses, a live microphone level meter, tablet contact state and normalized X/Y coordinates, and the tablet input area. `src/app/ui/DeviceTestWindow.java`
-- `DeviceTestWindow(BandClient pBandClient, GlfwGamepadRuntime pGamepadRuntime)` — starts a device-test session when shown and closes its resources when disposed.
+Shows device input and synth status during device testing. `src/app/ui/DeviceTestWindow.java`
+- `DeviceTestWindow(BandClient pBandClient, GlfwGamepadRuntime pGamepadRuntime)` — starts and owns a device-test session.
+
+### RecordingWindow
+Captures commands from the gamepad, tablet and microphone-driven instrument. `src/app/ui/RecordingWindow.java`
+- `RecordingWindow(GlfwGamepadRuntime pGamepadRuntime, RecordingLibrary pRecordingLibrary)` — creates a session with a new OSC client.
+- `RecordingWindow(BandClient pBandClient, GlfwGamepadRuntime pGamepadRuntime, RecordingLibrary pRecordingLibrary)` — creates a session with injected dependencies.
+
+### RecordingSaveDialog
+Shows the save workflow for a completed recording. `src/app/ui/RecordingSaveDialog.java`
+- `showDialog(Window pOwner, RecordingLibrary pLibrary, List<CommandRecord> pCommands, Instant pCreatedAt)` — opens the modal save UI.
+
+### RecordingSavePanel
+Validates and saves a recording asynchronously. `src/app/ui/RecordingSavePanel.java`
+- `RecordingSavePanel(RecordingSaveService pSaveService, List<CommandRecord> pCommands, Instant pCreatedAt, Runnable pFinishedAction)` — creates a panel with Swing dialogs.
+- `RecordingSavePanel(RecordingSaveService pSaveService, List<CommandRecord> pCommands, Instant pCreatedAt, Runnable pFinishedAction, Interaction pInteraction)` — creates a panel with injected UI interactions.
+- `Interaction.showWarning(Component pParent, String pMessage)` — displays a name warning.
+- `Interaction.choosePartialFilesDecision(Component pParent)` — obtains the user's partial-library decision.
+- `Interaction.showSaved(Component pParent, String pName)` — confirms successful storage.
+- `Interaction.showError(Component pParent, Throwable pError)` — displays a storage failure.
 
 ### TabletInputPanel
-Captures local pointer position and press/release state for tablet testing. `src/app/ui/TabletInputPanel.java`
-- `TabletInputPanel(Consumer<TabletInput> pInputConsumer)` — reports normalized pointer inputs; it does not install global input capture.
-
-### powerBand
-Application entrypoint. `src/app/powerBand.java`
-- `main(String[] pArgs)` — starts Swing and runs GLFW polling on the creating main thread until the main window closes.
-
-### IConstants
-Menu labels, UI colors, and configurable microphone mixer name. `src/app/util/IConstants.java`
-
-## Constants
-- `MICROPHONE_DEVICE_NAME` — exact mixer name to select; an empty value uses the system default recording input.
+Captures local pointer position and press/release state. `src/app/ui/TabletInputPanel.java`
+- `TabletInputPanel(Consumer<TabletInput> pInputConsumer)` — reports normalized pointer inputs.
