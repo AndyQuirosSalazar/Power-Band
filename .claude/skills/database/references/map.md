@@ -15,6 +15,8 @@ Persistence contract used by recording workflows. `src/app/storage/RecordingLibr
 - `initialize(PartialFilesDecision pDecision)` — creates or initializes the recording file set.
 - `recordingExists(String pName)` — checks a name in the sorted index.
 - `addRecording(String pName, Instant pCreatedAt, List<CommandRecord> pCommands)` — appends a recording and updates the library.
+- `listRecordings()` — returns immutable recording metadata in `recordings.list` order.
+- `readRecording(String pName)` — returns the selected command sequence or an empty result if absent.
 
 ### RecordingStorage
 Implements the recording file formats and initialization. `src/app/storage/RecordingStorage.java`
@@ -22,6 +24,14 @@ Implements the recording file formats and initialization. `src/app/storage/Recor
 - `initialize(PartialFilesDecision pDecision)` — creates files or applies a partial-library decision.
 - `recordingExists(String pName)` — searches the index using disk seeks.
 - `addRecording(String pName, Instant pCreatedAt, List<CommandRecord> pCommands)` — appends music, index and list entries.
+- `listRecordings()` — reads validated metadata without creating or changing files.
+- `readRecording(String pName)` — searches the index by binary seek and reads the selected header range.
+
+### RecordingMetadata
+Immutable recording name and creation timestamp. `src/app/model/RecordingMetadata.java`
+- `RecordingMetadata(String pName, Instant pCreatedAt)` — stores the display metadata.
+- `getName()` — returns the recording name.
+- `getCreatedAt()` — returns the creation timestamp.
 
 ### InitializationResult
 Initialization outcomes. `src/app/storage/InitializationResult.java`

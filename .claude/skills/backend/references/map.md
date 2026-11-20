@@ -8,6 +8,7 @@ Source: `src/app/bridge`, `src/app/logic`, `src/app/model`, `src/app/supercollid
 - Bridge instruments translate allowed device input into synth commands.
 - Input sessions route gamepad, microphone-level and tablet signals.
 - Recording capture timestamps successful synth commands; save service validates and persists completed sessions.
+- Recording playback maps stored synth records to Bridge commands and dispatches them against monotonic deadlines.
 - `BandClient` sends OSC messages to SuperCollider.
 
 ## Classes
@@ -127,6 +128,18 @@ Validates a name and coordinates library initialization and storage. `src/app/lo
 - `save(String pRawName, List<CommandRecord> pCommands, Instant pCreatedAt, PartialFilesDecision pPartialFilesDecision)` — validates and saves, or returns the required user decision.
 - `normalizeName(String pRawName)` — removes outer ASCII spaces.
 
+### RecordingPlayer
+Reads and schedules a selected recording through an injectable playback session. `src/app/logic/RecordingPlayer.java`
+- `RecordingPlayer(RecordingLibrary pRecordingLibrary)` — configures storage with a real SuperCollider session and monotonic clock.
+- `RecordingPlayer(RecordingLibrary pRecordingLibrary, PlaybackSessionFactory pSessionFactory, LongSupplier pNanoTime, Sleeper pSleeper)` — injects the session and clock functions.
+- `listRecordings()` — returns library metadata for the selector.
+- `play(String pName)` — dispatches recorded commands on absolute timeline deadlines.
+- `Result` — reports `COMPLETED`, `NOT_FOUND`, or `CANCELLED`.
+- `PlaybackSession.execute(SynthCommand pCommand)` — sends one mapped command.
+- `PlaybackSession.close()` — closes the playback output session.
+- `PlaybackSessionFactory.open()` — opens a playback session.
+- `Sleeper.sleep(long pNanoseconds)` — waits for a timeline interval.
+
 ### BandClient
 Sends synth control messages to SuperCollider. `src/app/supercollider/BandClient.java`
 - `BandClient()` — connects to the default host and port.
@@ -145,3 +158,4 @@ Sends synth control messages to SuperCollider. `src/app/supercollider/BandClient
 Shared UI labels and synth/recording format values. `src/app/util/IConstants.java`
 - `BUTTON_RECORD`, `BUTTON_FINISH_RECORDING`, `BUTTON_SAVE`, `BUTTON_CANCEL` — labels used by the recording workflow.
 - `SYNTH_ID_BASS`, `SYNTH_ID_PIANO`, `SYNTH_ID_ORGAN` — synth identifiers stored in command records.
+- `PLAYBACK_*` — playback dialog labels and status messages.

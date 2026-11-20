@@ -31,6 +31,15 @@ Verifies binary persistence, disk search, initialization choices, and malformed/
 - `rejectsMisalignedMusicAndIndexFilesWithoutRepairingThem()` — checks corrupt binary-file sizes.
 - `rejectsInvalidNamesBeforeChangingFiles()` — checks invalid storage names.
 - `rejectsIncompleteListLineBeforeChangingBinaryFiles()` — checks incomplete list entries.
+- `listsChronologicallyAndReadsOnlyTheSelectedRecordingWithoutChangingFiles()` — checks read order, lookup and immutability.
+- `readOnlyQueriesHandleAbsentAndPartialFileSetsWithoutCreatingOrChangingFiles()` — checks empty and incomplete libraries.
+- `rejectsInvalidSelectedHeaderRangeWithoutRepairingFiles()` — checks invalid playback offsets.
+
+### RecordingPlayerTest
+Verifies playback mapping and timeline behavior with an injected session and clock. `src/test/app/logic/RecordingPlayerTest.java`
+- `mapsCommandsAndUsesAbsoluteDeadlinesWithoutReorderingEqualTimestamps()` — checks synth mapping, tie order, and drift-free scheduling.
+- `returnsNotFoundWithoutOpeningAPlaybackSession()` — checks explicit missing-name behavior.
+- `propagatesTheFirstSendFailureAndClosesThePlaybackSession()` — checks failure propagation and resource cleanup.
 
 ### CommandRecordTest
 Verifies fixed-width serialization and validation. `src/test/app/model/CommandRecordTest.java`
@@ -76,6 +85,14 @@ Verifies menu layout and actions. `src/test/app/ui/MainMenuTest.java`
 - `showsTheTitleAndButtonsInTheRequiredOrder()` — checks menu presentation.
 - `testButtonRunsItsActionAndExitRunsItsAction()` — checks test and exit callbacks.
 - `recordButtonRunsItsAction()` — checks the recording callback.
+- `playButtonRunsItsAction()` — checks the playback callback.
+
+### RecordingPlaybackPanelTest
+Verifies asynchronous playback selection, cancellation, empty libraries, and visible errors. `src/test/app/ui/RecordingPlaybackPanelTest.java`
+- `loadsChronologicalChoicesOffEdtAndPlaysOnlyTheConfirmedSelection()` — checks EDT responsiveness, ordered options, and selected playback.
+- `cancellingTheSelectorDoesNotStartPlayback()` — checks selection cancellation.
+- `showsTheEmptyLibraryMessageWithoutOpeningPlayback()` — checks the empty state.
+- `reportsLibraryReadErrorsInsteadOfShowingAnEmptySuccess()` — checks explicit read errors.
 
 ### TabletInputPanelTest
 Verifies local AWT pointer normalization and touch state. `src/test/app/ui/TabletInputPanelTest.java`
