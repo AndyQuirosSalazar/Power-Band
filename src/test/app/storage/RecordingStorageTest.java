@@ -10,6 +10,7 @@ import app.bridge.commands.BassCommand;
 import app.bridge.commands.PianoCommand;
 import app.exceptions.RecordingStorageException;
 import app.model.CommandRecord;
+import app.model.RecordingMetadata;
 import app.util.IConstants;
 import java.io.DataInputStream;
 import java.io.IOException;
@@ -22,6 +23,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -97,6 +99,83 @@ class RecordingStorageTest {
         assertThrows(
                 RecordingStorageException.class,
                 () -> storage.addRecording("Piano", createdAt.plusSeconds(4), List.of()));
+        assertArrayEquals(musicBefore, Files.readAllBytes(musicFile(temporaryDirectory)));
+        assertArrayEquals(indexBefore, Files.readAllBytes(indexFile(temporaryDirectory)));
+        assertArrayEquals(listBefore, Files.readAllBytes(listFile(temporaryDirectory)));
+    }
+
+    @Test
+    void listsChronologicallyAndReadsOnlyTheSelectedRecordingWithoutChangingFiles() throws IOException {
+        RecordingStorage storage = new RecordingStorage(temporaryDirectory);
+        storage.initialize(null);
+        Instant createdAt = Instant.parse("2026-11-17T20:00:00Z");
+        storage.addRecording(
+                "zeta",
+                createdAt,
+                List.of(new BassCommand(43, 250).toCommandRecord(0L)));
+        storage.addRecording(
+                "Alpha",
+                createdAt.plusSeconds(1),
+                List.of(
+                        new PianoCommand(64, 500, true).toCommandRecord(0L),
+                        new PianoCommand(67, 500, false).toCommandRecord(120L)));
+        byte[] musicBefore = Files.readAllBytes(musicFile(temporaryDirectory));
+        byte[] indexBefore = Files.readAllBytes(indexFile(temporaryDirectory));
+        byte[] listBefore = Files.readAllBytes(listFile(temporaryDirectory));
+
+        List<RecordingMetadata> recordings = storage.listRecordings();
+        Optional<List<CommandRecord>> selected = storage.readRecording("Alpha");
+
+        assertEquals(List.of("zeta", "Alpha"), recordings.stream().map(RecordingMetadata::getName).toList());
+        assertEquals(createdAt.plusSeconds(1), recordings.get(1).getCreatedAt());
+        assertEquals(List.of(64, 67), selected.orElseThrow().stream().map(CommandRecord::getNote).toList());
+        assertTrue(storage.readRecording("ALPHA").isEmpty());
+        assertThrows(UnsupportedOperationException.class, () -> recordings.add(recordings.getFirst()));
+        assertArrayEquals(musicBefore, Files.readAllBytes(musicFile(temporaryDirectory)));
+        assertArrayEquals(indexBefore, Files.readAllBytes(indexFile(temporaryDirectory)));
+        assertArrayEquals(listBefore, Files.readAllBytes(listFile(temporaryDirectory)));
+    }
+
+    @Test
+    void readOnlyQueriesHandleAbsentAndPartialFileSetsWithoutCreatingOrChangingFiles() throws IOException {
+        RecordingStorage emptyStorage = new RecordingStorage(temporaryDirectory);
+
+        assertEquals(List.of(), emptyStorage.listRecordings());
+        assertTrue(emptyStorage.readRecording("Missing").isEmpty());
+        assertFalse(Files.exists(musicFile(temporaryDirectory)));
+        assertFalse(Files.exists(indexFile(temporaryDirectory)));
+        assertFalse(Files.exists(listFile(temporaryDirectory)));
+
+        Path partialDirectory = temporaryDirectory.resolve("partial");
+        Files.createDirectories(partialDirectory);
+        byte[] existingContents = { 7, 8, 9 };
+        Files.write(musicFile(partialDirectory), existingContents);
+        RecordingStorage partialStorage = new RecordingStorage(partialDirectory);
+
+        assertThrows(RecordingStorageException.class, partialStorage::listRecordings);
+        assertArrayEquals(existingContents, Files.readAllBytes(musicFile(partialDirectory)));
+        assertFalse(Files.exists(indexFile(partialDirectory)));
+        assertFalse(Files.exists(listFile(partialDirectory)));
+    }
+
+    @Test
+    void rejectsInvalidSelectedHeaderRangeWithoutRepairingFiles() throws IOException {
+        RecordingStorage storage = new RecordingStorage(temporaryDirectory);
+        storage.initialize(null);
+        storage.addRecording(
+                "Jam",
+                Instant.EPOCH,
+                List.of(new BassCommand(43, 250).toCommandRecord(0L)));
+        byte[] corruptMusic = Files.readAllBytes(musicFile(temporaryDirectory));
+        ByteBuffer.wrap(corruptMusic).order(ByteOrder.BIG_ENDIAN)
+                .putLong(IConstants.RECORDING_NAME_BYTES + Long.BYTES, Long.MAX_VALUE);
+        Files.write(musicFile(temporaryDirectory), corruptMusic);
+        byte[] musicBefore = Files.readAllBytes(musicFile(temporaryDirectory));
+        byte[] indexBefore = Files.readAllBytes(indexFile(temporaryDirectory));
+        byte[] listBefore = Files.readAllBytes(listFile(temporaryDirectory));
+
+        assertThrows(RecordingStorageException.class, () -> storage.readRecording("Jam"));
+
         assertArrayEquals(musicBefore, Files.readAllBytes(musicFile(temporaryDirectory)));
         assertArrayEquals(indexBefore, Files.readAllBytes(indexFile(temporaryDirectory)));
         assertArrayEquals(listBefore, Files.readAllBytes(listFile(temporaryDirectory)));

@@ -1,18 +1,18 @@
 ---
 id: ft-7
 layer: frontend
-status: draft
+status: approved
 ---
 
 # Guardar grabación desde la interfaz
 
 ## General description
 
-Al finalizar una grabación, permitir guardarla con un nombre o cancelarla. Validar el nombre y ofrecer una decisión clara cuando falten algunos archivos de almacenamiento. Depende del contrato de persistencia de ft-6.
+El botón `Grabar` inicia una sesión que captura los comandos de los instrumentos y sus tiempos relativos (no almacena audio crudo). Al finalizar, permitir guardar la música con un nombre o cancelarla. Validar el nombre y ofrecer una decisión clara cuando falten algunos archivos de almacenamiento. Depende del contrato de persistencia de ft-6.
 
 ## Inputs
 
-- Grabación completada: comandos con tiempos relativos y fecha/hora de creación.
+- Comandos Bridge generados por los instrumentos durante la sesión, con tiempos relativos y fecha/hora de creación.
 - Nombre escrito por el usuario.
 - Resultado de búsqueda de nombre y operación de almacenamiento de ft-6.
 - Estado de inicialización de los archivos de grabaciones.
@@ -27,6 +27,7 @@ Al finalizar una grabación, permitir guardarla con un nombre o cancelarla. Vali
 ## Test criteria
 
 - Al completar una grabación se presentan las acciones Guardar y Cancelar y un campo para el nombre.
+- El botón Grabar abre la sesión de captura y Finalizar grabación termina la captura antes de presentar el guardado.
 - Se acepta un nombre de 1 a 31 caracteres ASCII imprimibles; los espacios iniciales/finales se eliminan antes de validarlo.
 - Un nombre vacío, no ASCII, mayor a 31 caracteres o ya existente produce una advertencia y permite corregirlo sin perder la grabación.
 - La comparación distingue mayúsculas: `Piano` y `piano` son nombres distintos.
@@ -49,10 +50,11 @@ Al finalizar una grabación, permitir guardarla con un nombre o cancelarla. Vali
 
 ## Business workflow
 
-1. Al finalizar una grabación, mostrar el campo de nombre y las opciones Guardar y Cancelar.
-2. Recortar espacios externos y validar de 1 a 31 caracteres ASCII imprimibles.
-3. Consultar al almacenamiento de ft-6 si el nombre ya existe, con comparación sensible a mayúsculas.
-4. Si el nombre no es válido o existe, mostrar una advertencia y conservar la grabación para corregirlo.
-5. Si los archivos están incompletos, presentar las opciones acordadas y aplicar únicamente la decisión seleccionada.
-6. Si el nombre es válido, solicitar el guardado y mostrar éxito solo al completarse.
-7. Si se cancela, no modificar los archivos de grabaciones.
+1. El botón Grabar inicia la captura de comandos generados por los instrumentos, con sus tiempos relativos.
+2. Al finalizar, mostrar el campo de nombre y las opciones Guardar y Cancelar.
+3. Recortar espacios externos y validar de 1 a 31 caracteres ASCII imprimibles.
+4. Consultar al almacenamiento de ft-6 si el nombre ya existe, con comparación sensible a mayúsculas.
+5. Si el nombre no es válido o existe, mostrar una advertencia y conservar la grabación para corregirlo.
+6. Si los archivos están incompletos, presentar las opciones acordadas y aplicar únicamente la decisión seleccionada.
+7. Si el nombre es válido, solicitar el guardado y mostrar éxito solo al completarse.
+8. Si se cancela, no modificar los archivos de grabaciones.

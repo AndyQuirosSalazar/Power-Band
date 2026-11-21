@@ -68,6 +68,33 @@ class MainMenuTest {
         });
     }
 
+    @Test
+    void recordButtonRunsItsAction() throws InvocationTargetException, InterruptedException {
+        AtomicInteger recordActionCalls = new AtomicInteger();
+
+        SwingUtilities.invokeAndWait(() -> {
+            MainMenu menu = new MainMenu(() -> { }, () -> { }, recordActionCalls::incrementAndGet);
+            JButton recordButton = getButtons(menu).get(1);
+
+            recordButton.doClick(0);
+
+            assertEquals(1, recordActionCalls.get());
+        });
+    }
+
+    @Test
+    void playButtonRunsItsAction() throws InvocationTargetException, InterruptedException {
+        AtomicInteger playActionCalls = new AtomicInteger();
+
+        SwingUtilities.invokeAndWait(() -> {
+            MainMenu menu = new MainMenu(() -> { }, () -> { }, () -> { }, playActionCalls::incrementAndGet);
+
+            getButtons(menu).get(2).doClick(0);
+
+            assertEquals(1, playActionCalls.get());
+        });
+    }
+
     private static List<JButton> getButtons(MainMenu pMenu) {
         return Arrays.stream(pMenu.getComponents())
                 .filter(JButton.class::isInstance)

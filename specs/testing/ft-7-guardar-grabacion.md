@@ -1,7 +1,7 @@
 ---
 id: ft-7
 layer: testing
-status: draft
+status: approved
 ---
 
 # Pruebas de la interfaz para guardar
@@ -23,6 +23,7 @@ Verificar el diálogo de nombre, sus validaciones y la interacción con los resu
 ## Test criteria
 
 - El diálogo permite Guardar o Cancelar una grabación completada.
+- El botón Grabar inicia captura de comandos y Finalizar grabación presenta el diálogo de guardado.
 - Nombres vacíos, no ASCII, mayores de 31 caracteres o duplicados producen advertencia y no descartan la grabación.
 - La comparación de duplicados distingue mayúsculas y los espacios externos se eliminan antes de validar.
 - Cancelar el guardado no solicita ni confirma una escritura.

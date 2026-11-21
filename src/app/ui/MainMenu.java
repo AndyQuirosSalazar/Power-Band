@@ -22,9 +22,23 @@ public final class MainMenu extends JPanel {
     }
 
     public MainMenu(Runnable pExitAction, Runnable pTestAction) {
+        this(pExitAction, pTestAction, () -> { });
+    }
+
+    public MainMenu(Runnable pExitAction, Runnable pTestAction, Runnable pRecordAction) {
+        this(pExitAction, pTestAction, pRecordAction, () -> { });
+    }
+
+    public MainMenu(
+            Runnable pExitAction,
+            Runnable pTestAction,
+            Runnable pRecordAction,
+            Runnable pPlayAction) {
         super(new GridBagLayout());
         Objects.requireNonNull(pExitAction, "pExitAction");
         Objects.requireNonNull(pTestAction, "pTestAction");
+        Objects.requireNonNull(pRecordAction, "pRecordAction");
+        Objects.requireNonNull(pPlayAction, "pPlayAction");
         setPreferredSize(MENU_SIZE);
 
         JLabel title = new JLabel(IConstants.WINDOW_TITLE, SwingConstants.CENTER);
@@ -56,6 +70,10 @@ public final class MainMenu extends JPanel {
                 button.addActionListener(pEvent -> pExitAction.run());
             } else if (IConstants.BUTTON_TEST.equals(buttonLabels[index])) {
                 button.addActionListener(pEvent -> pTestAction.run());
+            } else if (IConstants.BUTTON_RECORD.equals(buttonLabels[index])) {
+                button.addActionListener(pEvent -> pRecordAction.run());
+            } else if (IConstants.BUTTON_PLAY.equals(buttonLabels[index])) {
+                button.addActionListener(pEvent -> pPlayAction.run());
             }
         }
     }
