@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import app.bridge.commands.BassCommand;
+import app.logic.RecordingDeletionService;
 import app.logic.RecordingPlayer;
 import app.model.CommandRecord;
 import app.model.RecordingMetadata;
@@ -15,6 +16,7 @@ import app.util.IConstants;
 import java.awt.Component;
 import java.io.IOException;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
@@ -51,7 +53,7 @@ class RecordingPlaybackPanelTest {
                 pNanoseconds -> { });
 
         SwingUtilities.invokeAndWait(() -> panelReference.set(
-                new RecordingPlaybackPanel(player, () -> { }, interaction)));
+                new RecordingPlaybackPanel(player, new RecordingDeletionService(library), () -> { }, interaction)));
         assertTrue(listStarted.await(5, TimeUnit.SECONDS));
 
         AtomicInteger edtAction = new AtomicInteger();
@@ -116,7 +118,11 @@ class RecordingPlaybackPanelTest {
         AtomicReference<RecordingPlaybackPanel> panelReference = new AtomicReference<>();
 
         SwingUtilities.invokeAndWait(() -> panelReference.set(
-                new RecordingPlaybackPanel(player, finished::countDown, new FakeInteraction(new CountDownLatch(0)))));
+                new RecordingPlaybackPanel(
+                        player,
+                        new RecordingDeletionService(library),
+                        finished::countDown,
+                        new FakeInteraction(new CountDownLatch(0)))));
         SwingUtilities.invokeAndWait(() -> panelReference.get().getCancelButton().doClick(0));
 
         assertTrue(finished.await(5, TimeUnit.SECONDS));
@@ -142,7 +148,7 @@ class RecordingPlaybackPanelTest {
         RecordingPlaybackPanel.Interaction interaction = new FakeInteraction(null, emptyShown, null);
 
         SwingUtilities.invokeAndWait(() -> panelReference.set(
-                new RecordingPlaybackPanel(player, finished::countDown, interaction)));
+                new RecordingPlaybackPanel(player, new RecordingDeletionService(library), finished::countDown, interaction)));
 
         assertTrue(emptyShown.await(5, TimeUnit.SECONDS));
         assertTrue(finished.await(5, TimeUnit.SECONDS));
@@ -169,10 +175,154 @@ class RecordingPlaybackPanelTest {
                 pNanoseconds -> { });
         RecordingPlaybackPanel.Interaction interaction = new FakeInteraction(null, null, errorShown);
 
-        SwingUtilities.invokeAndWait(() -> new RecordingPlaybackPanel(player, finished::countDown, interaction));
+        SwingUtilities.invokeAndWait(() -> new RecordingPlaybackPanel(
+                player,
+                new RecordingDeletionService(library),
+                finished::countDown,
+                interaction));
 
         assertTrue(errorShown.await(5, TimeUnit.SECONDS));
         assertTrue(finished.await(5, TimeUnit.SECONDS));
+    }
+
+    @Test
+    void cancellingDeleteConfirmationDoesNotCallTheDeletionService() throws Exception {
+        CountDownLatch listStarted = new CountDownLatch(1);
+        CountDownLatch allowListToFinish = new CountDownLatch(1);
+        CountDownLatch listLoaded = new CountDownLatch(1);
+        FakeRecordingLibrary library = new FakeRecordingLibrary(
+                List.of(new RecordingMetadata("saved", Instant.EPOCH)),
+                List.of(),
+                listStarted,
+                allowListToFinish);
+        FakeInteraction interaction = new FakeInteraction(null);
+        interaction.confirmDeleteResult = false;
+        AtomicReference<RecordingPlaybackPanel> panelReference = new AtomicReference<>();
+        RecordingPlayer player = new RecordingPlayer(library, () -> pCommand -> { }, () -> 0L, pTime -> { });
+
+        SwingUtilities.invokeAndWait(() -> panelReference.set(
+                new RecordingPlaybackPanel(player, new RecordingDeletionService(library), () -> { }, interaction)));
+        assertTrue(listStarted.await(5, TimeUnit.SECONDS));
+        SwingUtilities.invokeAndWait(() -> panelReference.get().getRecordingList().getModel()
+                .addListDataListener(listLoadListener(listLoaded)));
+        allowListToFinish.countDown();
+        assertTrue(listLoaded.await(5, TimeUnit.SECONDS));
+
+        SwingUtilities.invokeAndWait(() -> {
+            RecordingPlaybackPanel panel = panelReference.get();
+            assertFalse(panel.getDeleteButton().isEnabled());
+            panel.getRecordingList().setSelectedIndex(0);
+            assertTrue(panel.getDeleteButton().isEnabled());
+            panel.getDeleteButton().doClick(0);
+        });
+
+        assertEquals(1, interaction.confirmCalls);
+        assertEquals("saved", interaction.confirmationName);
+        assertEquals(0, library.deleteCalls);
+        SwingUtilities.invokeAndWait(() -> assertEquals(
+                1,
+                panelReference.get().getRecordingList().getModel().getSize()));
+    }
+
+    @Test
+    void confirmedDeleteRemovesOnlyTheSelectedRecordingAndRefreshesTheList() throws Exception {
+        CountDownLatch listStarted = new CountDownLatch(1);
+        CountDownLatch allowListToFinish = new CountDownLatch(1);
+        CountDownLatch listLoaded = new CountDownLatch(1);
+        CountDownLatch deletionShown = new CountDownLatch(1);
+        FakeRecordingLibrary library = new FakeRecordingLibrary(
+                List.of(
+                        new RecordingMetadata("first", Instant.EPOCH),
+                        new RecordingMetadata("second", Instant.EPOCH.plusSeconds(1))),
+                List.of(),
+                listStarted,
+                allowListToFinish);
+        FakeInteraction interaction = new FakeInteraction(null);
+        interaction.confirmDeleteResult = true;
+        interaction.deletionShown = deletionShown;
+        AtomicReference<RecordingPlaybackPanel> panelReference = new AtomicReference<>();
+        RecordingPlayer player = new RecordingPlayer(library, () -> pCommand -> { }, () -> 0L, pTime -> { });
+
+        SwingUtilities.invokeAndWait(() -> panelReference.set(
+                new RecordingPlaybackPanel(player, new RecordingDeletionService(library), () -> { }, interaction)));
+        assertTrue(listStarted.await(5, TimeUnit.SECONDS));
+        SwingUtilities.invokeAndWait(() -> panelReference.get().getRecordingList().getModel()
+                .addListDataListener(listLoadListener(listLoaded)));
+        allowListToFinish.countDown();
+        assertTrue(listLoaded.await(5, TimeUnit.SECONDS));
+
+        SwingUtilities.invokeAndWait(() -> {
+            RecordingPlaybackPanel panel = panelReference.get();
+            panel.getRecordingList().setSelectedIndex(1);
+            panel.getDeleteButton().doClick(0);
+        });
+
+        assertTrue(deletionShown.await(5, TimeUnit.SECONDS));
+        SwingUtilities.invokeAndWait(() -> {
+            RecordingPlaybackPanel panel = panelReference.get();
+            assertEquals(1, panel.getRecordingList().getModel().getSize());
+            assertEquals("first", panel.getRecordingList().getModel().getElementAt(0).getName());
+            assertEquals(IConstants.PLAYBACK_SELECT_MESSAGE, panel.getStatusText());
+            assertFalse(panel.getDeleteButton().isEnabled());
+        });
+        assertEquals("second", library.deletedName);
+        assertEquals(1, library.deleteCalls);
+        assertEquals("second", interaction.deletedName);
+        assertEquals("second", interaction.confirmationName);
+    }
+
+    @Test
+    void reportsDeleteErrorsAndKeepsTheRecordingVisible() throws Exception {
+        CountDownLatch listStarted = new CountDownLatch(1);
+        CountDownLatch allowListToFinish = new CountDownLatch(1);
+        CountDownLatch listLoaded = new CountDownLatch(1);
+        CountDownLatch errorShown = new CountDownLatch(1);
+        FakeRecordingLibrary library = new FakeRecordingLibrary(
+                List.of(new RecordingMetadata("saved", Instant.EPOCH)),
+                List.of(),
+                listStarted,
+                allowListToFinish);
+        library.deleteError = new IOException("disk unavailable");
+        FakeInteraction interaction = new FakeInteraction(null);
+        interaction.confirmDeleteResult = true;
+        interaction.deleteErrorShown = errorShown;
+        AtomicReference<RecordingPlaybackPanel> panelReference = new AtomicReference<>();
+        RecordingPlayer player = new RecordingPlayer(library, () -> pCommand -> { }, () -> 0L, pTime -> { });
+
+        SwingUtilities.invokeAndWait(() -> panelReference.set(
+                new RecordingPlaybackPanel(player, new RecordingDeletionService(library), () -> { }, interaction)));
+        assertTrue(listStarted.await(5, TimeUnit.SECONDS));
+        SwingUtilities.invokeAndWait(() -> panelReference.get().getRecordingList().getModel()
+                .addListDataListener(listLoadListener(listLoaded)));
+        allowListToFinish.countDown();
+        assertTrue(listLoaded.await(5, TimeUnit.SECONDS));
+        SwingUtilities.invokeAndWait(() -> {
+            panelReference.get().getRecordingList().setSelectedIndex(0);
+            panelReference.get().getDeleteButton().doClick(0);
+        });
+
+        assertTrue(errorShown.await(5, TimeUnit.SECONDS));
+        SwingUtilities.invokeAndWait(() -> assertEquals(
+                1,
+                panelReference.get().getRecordingList().getModel().getSize()));
+        assertEquals("disk unavailable", interaction.deleteError.getMessage());
+    }
+
+    private static ListDataListener listLoadListener(CountDownLatch pListLoaded) {
+        return new ListDataListener() {
+            @Override
+            public void intervalAdded(ListDataEvent pEvent) {
+                pListLoaded.countDown();
+            }
+
+            @Override
+            public void intervalRemoved(ListDataEvent pEvent) {
+            }
+
+            @Override
+            public void contentsChanged(ListDataEvent pEvent) {
+            }
+        };
     }
 
     private static final class FakeRecordingLibrary implements RecordingLibrary {
@@ -182,6 +332,9 @@ class RecordingPlaybackPanelTest {
         private final CountDownLatch listStarted;
         private final CountDownLatch allowListToFinish;
         private final IOException listError;
+        private IOException deleteError;
+        private int deleteCalls;
+        private String deletedName;
         private String requestedName;
 
         private FakeRecordingLibrary(
@@ -198,7 +351,7 @@ class RecordingPlaybackPanelTest {
                 CountDownLatch pListStarted,
                 CountDownLatch pAllowListToFinish,
                 IOException pListError) {
-            recordings = pRecordings;
+            recordings = new ArrayList<>(pRecordings);
             commands = pCommands;
             listStarted = pListStarted;
             allowListToFinish = pAllowListToFinish;
@@ -218,6 +371,16 @@ class RecordingPlaybackPanelTest {
         @Override
         public void addRecording(String pName, Instant pCreatedAt, List<CommandRecord> pCommands) {
             throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public boolean deleteRecording(String pName) throws IOException {
+            deleteCalls++;
+            deletedName = pName;
+            if (deleteError != null) {
+                throw deleteError;
+            }
+            return recordings.removeIf(pRecording -> pName.equals(pRecording.getName()));
         }
 
         @Override
@@ -249,6 +412,13 @@ class RecordingPlaybackPanelTest {
         private final CountDownLatch playbackFinished;
         private final CountDownLatch emptyShown;
         private final CountDownLatch errorShown;
+        private CountDownLatch deletionShown;
+        private CountDownLatch deleteErrorShown;
+        private boolean confirmDeleteResult;
+        private int confirmCalls;
+        private String confirmationName;
+        private String deletedName;
+        private Throwable deleteError;
 
         private FakeInteraction(CountDownLatch pPlaybackFinished) {
             this(pPlaybackFinished, null, null);
@@ -291,6 +461,31 @@ class RecordingPlaybackPanelTest {
         @Override
         public void showNotFound(Component pParent, String pName) {
             throw new AssertionError("unexpected not-found result for " + pName);
+        }
+
+        @Override
+        public boolean confirmDelete(Component pParent, String pName) {
+            confirmCalls++;
+            confirmationName = pName;
+            return confirmDeleteResult;
+        }
+
+        @Override
+        public void showDeleted(Component pParent, String pName) {
+            deletedName = pName;
+            if (deletionShown == null) {
+                throw new AssertionError("unexpected deletion of " + pName);
+            }
+            deletionShown.countDown();
+        }
+
+        @Override
+        public void showDeleteError(Component pParent, Throwable pError) {
+            deleteError = pError;
+            if (deleteErrorShown == null) {
+                throw new AssertionError(pError);
+            }
+            deleteErrorShown.countDown();
         }
     }
 }

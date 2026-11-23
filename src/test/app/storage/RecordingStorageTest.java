@@ -137,6 +137,108 @@ class RecordingStorageTest {
     }
 
     @Test
+    void deletesMiddleRecordingAndCompactsMusicWithCorrectOffsets() throws IOException {
+        RecordingStorage storage = new RecordingStorage(temporaryDirectory);
+        storage.initialize(null);
+        Instant createdAt = Instant.parse("2026-11-17T20:00:00Z");
+        List<CommandRecord> firstCommands = List.of(
+                new BassCommand(42, 250).toCommandRecord(0L),
+                new BassCommand(45, 250).toCommandRecord(80L));
+        List<CommandRecord> middleCommands = List.of(new PianoCommand(64, 500, true).toCommandRecord(0L));
+        List<CommandRecord> lastCommands = List.of(new PianoCommand(67, 500, false).toCommandRecord(0L));
+        storage.addRecording("First", createdAt, firstCommands);
+        storage.addRecording("Middle", createdAt.plusSeconds(1), middleCommands);
+        storage.addRecording("Last", createdAt.plusSeconds(2), lastCommands);
+        long originalMusicLength = Files.size(musicFile(temporaryDirectory));
+
+        assertTrue(storage.deleteRecording("Middle"));
+
+        assertEquals(originalMusicLength - IConstants.RECORDING_HEADER_BYTES - IConstants.COMMAND_RECORD_BYTES,
+                Files.size(musicFile(temporaryDirectory)));
+        assertEquals(List.of("First", "Last"), storage.listRecordings().stream()
+                .map(RecordingMetadata::getName)
+                .toList());
+        assertEquals(List.of("First", "Last"), readIndexNames(indexFile(temporaryDirectory)));
+        assertEquals(0L, readIndexOffset(indexFile(temporaryDirectory), "First"));
+        assertEquals(
+                IConstants.RECORDING_HEADER_BYTES + firstCommands.size() * IConstants.COMMAND_RECORD_BYTES,
+                readIndexOffset(indexFile(temporaryDirectory), "Last"));
+        assertTrue(storage.readRecording("Middle").isEmpty());
+        assertCommandRecordsEqual(firstCommands, storage.readRecording("First").orElseThrow());
+        assertCommandRecordsEqual(lastCommands, storage.readRecording("Last").orElseThrow());
+        assertEquals(
+                "First\t" + createdAt + "\nLast\t" + createdAt.plusSeconds(2) + "\n",
+                Files.readString(listFile(temporaryDirectory)));
+        try (var files = Files.list(temporaryDirectory)) {
+            assertEquals(3L, files.count());
+        }
+    }
+
+    @Test
+    void deletesFirstAndLastRecordingsAndLeavesSingleRecordingFilesValid() throws IOException {
+        Path firstLibraryDirectory = temporaryDirectory.resolve("first-library");
+        RecordingStorage firstLibrary = new RecordingStorage(firstLibraryDirectory);
+        firstLibrary.initialize(null);
+        Instant createdAt = Instant.EPOCH;
+        firstLibrary.addRecording("First", createdAt, List.of());
+        firstLibrary.addRecording("Second", createdAt.plusSeconds(1), List.of());
+        firstLibrary.addRecording("Third", createdAt.plusSeconds(2), List.of());
+
+        assertTrue(firstLibrary.deleteRecording("First"));
+        assertEquals(0L, readIndexOffset(indexFile(firstLibraryDirectory), "Second"));
+        assertEquals(IConstants.RECORDING_HEADER_BYTES, readIndexOffset(indexFile(firstLibraryDirectory), "Third"));
+
+        assertTrue(firstLibrary.deleteRecording("Third"));
+        assertEquals(List.of("Second"), firstLibrary.listRecordings().stream()
+                .map(RecordingMetadata::getName)
+                .toList());
+        assertEquals(0L, readIndexOffset(indexFile(firstLibraryDirectory), "Second"));
+
+        assertTrue(firstLibrary.deleteRecording("Second"));
+        assertEquals(0L, Files.size(musicFile(firstLibraryDirectory)));
+        assertEquals(0L, Files.size(indexFile(firstLibraryDirectory)));
+        assertEquals(0L, Files.size(listFile(firstLibraryDirectory)));
+        assertFalse(firstLibrary.deleteRecording("Second"));
+        assertEquals(List.of(), firstLibrary.listRecordings());
+    }
+
+    @Test
+    void missingNameDoesNotModifyRecordingFiles() throws IOException {
+        RecordingStorage storage = new RecordingStorage(temporaryDirectory);
+        storage.initialize(null);
+        storage.addRecording("Saved", Instant.EPOCH, List.of());
+        byte[] musicBefore = Files.readAllBytes(musicFile(temporaryDirectory));
+        byte[] indexBefore = Files.readAllBytes(indexFile(temporaryDirectory));
+        byte[] listBefore = Files.readAllBytes(listFile(temporaryDirectory));
+
+        assertFalse(storage.deleteRecording("Missing"));
+
+        assertArrayEquals(musicBefore, Files.readAllBytes(musicFile(temporaryDirectory)));
+        assertArrayEquals(indexBefore, Files.readAllBytes(indexFile(temporaryDirectory)));
+        assertArrayEquals(listBefore, Files.readAllBytes(listFile(temporaryDirectory)));
+    }
+
+    @Test
+    void rejectsCorruptLibraryWithoutModifyingRecordingFilesDuringDeletion() throws IOException {
+        RecordingStorage storage = new RecordingStorage(temporaryDirectory);
+        storage.initialize(null);
+        storage.addRecording("Saved", Instant.EPOCH, List.of());
+        byte[] corruptIndex = Files.readAllBytes(indexFile(temporaryDirectory));
+        ByteBuffer.wrap(corruptIndex).order(ByteOrder.BIG_ENDIAN)
+                .putLong(IConstants.RECORDING_NAME_BYTES, IConstants.RECORDING_HEADER_BYTES);
+        Files.write(indexFile(temporaryDirectory), corruptIndex);
+        byte[] musicBefore = Files.readAllBytes(musicFile(temporaryDirectory));
+        byte[] indexBefore = Files.readAllBytes(indexFile(temporaryDirectory));
+        byte[] listBefore = Files.readAllBytes(listFile(temporaryDirectory));
+
+        assertThrows(RecordingStorageException.class, () -> storage.deleteRecording("Saved"));
+
+        assertArrayEquals(musicBefore, Files.readAllBytes(musicFile(temporaryDirectory)));
+        assertArrayEquals(indexBefore, Files.readAllBytes(indexFile(temporaryDirectory)));
+        assertArrayEquals(listBefore, Files.readAllBytes(listFile(temporaryDirectory)));
+    }
+
+    @Test
     void readOnlyQueriesHandleAbsentAndPartialFileSetsWithoutCreatingOrChangingFiles() throws IOException {
         RecordingStorage emptyStorage = new RecordingStorage(temporaryDirectory);
 
@@ -312,6 +414,36 @@ class RecordingStorageTest {
             }
         }
         return names;
+    }
+
+    private static long readIndexOffset(Path pIndexFile, String pName) throws IOException {
+        try (DataInputStream input = new DataInputStream(Files.newInputStream(pIndexFile))) {
+            int recordCount = (int) (Files.size(pIndexFile) / IConstants.RECORDING_INDEX_RECORD_BYTES);
+            for (int recordIndex = 0; recordIndex < recordCount; recordIndex++) {
+                byte[] record = new byte[IConstants.RECORDING_INDEX_RECORD_BYTES];
+                input.readFully(record);
+                String name = new String(
+                        record,
+                        0,
+                        IConstants.RECORDING_NAME_BYTES,
+                        StandardCharsets.US_ASCII).stripTrailing();
+                if (name.equals(pName)) {
+                    return ByteBuffer.wrap(record)
+                            .order(ByteOrder.BIG_ENDIAN)
+                            .getLong(IConstants.RECORDING_NAME_BYTES);
+                }
+            }
+        }
+        throw new AssertionError("recording not found in index: " + pName);
+    }
+
+    private static void assertCommandRecordsEqual(
+            List<CommandRecord> pExpected,
+            List<CommandRecord> pActual) {
+        assertEquals(pExpected.size(), pActual.size());
+        for (int index = 0; index < pExpected.size(); index++) {
+            assertArrayEquals(pExpected.get(index).toByteArray(), pActual.get(index).toByteArray());
+        }
     }
 
     private static byte[] encodeName(String pName) {

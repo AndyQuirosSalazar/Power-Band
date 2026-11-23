@@ -9,6 +9,7 @@ Source: `src/app/bridge`, `src/app/logic`, `src/app/model`, `src/app/supercollid
 - Input sessions route gamepad, microphone-level and tablet signals.
 - Recording capture timestamps successful synth commands; save service validates and persists completed sessions.
 - Recording playback maps stored synth records to Bridge commands and dispatches them against monotonic deadlines.
+- Recording deletion logic delegates confirmed requests to the library: `src/app/logic/RecordingDeletionService.java`.
 - `BandClient` sends OSC messages to SuperCollider.
 
 ## Classes
@@ -140,6 +141,12 @@ Reads and schedules a selected recording through an injectable playback session.
 - `PlaybackSessionFactory.open()` — opens a playback session.
 - `Sleeper.sleep(long pNanoseconds)` — waits for a timeline interval.
 
+### RecordingDeletionService
+Coordinates a confirmed recording deletion and reports whether the selected name exists. `src/app/logic/RecordingDeletionService.java`
+- `RecordingDeletionService(RecordingLibrary pLibrary)` — configures the persistence dependency.
+- `delete(String pName)` — returns `DELETED` or `NOT_FOUND` and propagates storage errors.
+- `Result` — distinguishes `DELETED` from `NOT_FOUND`.
+
 ### BandClient
 Sends synth control messages to SuperCollider. `src/app/supercollider/BandClient.java`
 - `BandClient()` — connects to the default host and port.
@@ -156,6 +163,6 @@ Sends synth control messages to SuperCollider. `src/app/supercollider/BandClient
 
 ### IConstants
 Shared UI labels and synth/recording format values. `src/app/util/IConstants.java`
-- `BUTTON_RECORD`, `BUTTON_FINISH_RECORDING`, `BUTTON_SAVE`, `BUTTON_CANCEL` — labels used by the recording workflow.
+- `BUTTON_RECORD`, `BUTTON_FINISH_RECORDING`, `BUTTON_SAVE`, `BUTTON_CANCEL`, `BUTTON_DELETE`, `BUTTON_CONFIRM` — recording and deletion workflow labels.
 - `SYNTH_ID_BASS`, `SYNTH_ID_PIANO`, `SYNTH_ID_ORGAN` — synth identifiers stored in command records.
-- `PLAYBACK_*` — playback dialog labels and status messages.
+- `PLAYBACK_*` — playback dialog labels and playback/deletion status messages.

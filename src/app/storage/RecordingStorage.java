@@ -6,15 +6,21 @@ import app.model.RecordingMetadata;
 import app.sorting.BalancedMergeSort;
 import app.util.IConstants;
 import java.io.BufferedOutputStream;
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.time.DateTimeException;
 import java.time.Instant;
@@ -27,6 +33,14 @@ import java.util.Optional;
 import java.util.Set;
 
 public final class RecordingStorage implements RecordingLibrary {
+
+    private static final String DELETE_TEMP_DIRECTORY_PREFIX = "recordings-delete-";
+
+    private record IndexEntry(long musicOffset) {
+    }
+
+    private record MusicHeader(String name, long commandsStart, long commandsEnd) {
+    }
 
     private final Path directory;
     private final Path musicFile;
@@ -152,6 +166,80 @@ public final class RecordingStorage implements RecordingLibrary {
     }
 
     @Override
+    public synchronized boolean deleteRecording(String pName) throws IOException {
+        byte[] name = encodeName(pName);
+        List<RecordingMetadata> recordings = readLibraryList();
+        if (recordings.isEmpty()) {
+            return false;
+        }
+
+        Set<String> listedNames = new HashSet<>();
+        for (RecordingMetadata recording : recordings) {
+            listedNames.add(recording.getName());
+        }
+
+        long musicLength = Files.size(musicFile);
+        long indexCount = validateIndexForDeletion(listedNames, musicLength);
+        long selectedOffset = findIndexEntry(name, indexCount)
+                .map(IndexEntry::musicOffset)
+                .orElse(-1L);
+        long selectedEnd = validateMusicForDeletion(listedNames, indexCount, name, musicLength);
+        if (selectedOffset < 0) {
+            if (selectedEnd >= 0) {
+                throw new RecordingStorageException("recordings.music contains a name absent from recordings.index");
+            }
+            return false;
+        }
+        if (selectedEnd < 0) {
+            throw new RecordingStorageException("recordings.index contains a name absent from recordings.music");
+        }
+
+        long removedBytes = selectedEnd - selectedOffset;
+        Path temporaryDirectory = Files.createTempDirectory(directory, DELETE_TEMP_DIRECTORY_PREFIX);
+        Path newMusicFile = temporaryDirectory.resolve("recordings.music.new");
+        Path newIndexFile = temporaryDirectory.resolve("recordings.index.new");
+        Path newListFile = temporaryDirectory.resolve("recordings.list.new");
+        Path oldMusicFile = temporaryDirectory.resolve("recordings.music.old");
+        Path oldIndexFile = temporaryDirectory.resolve("recordings.index.old");
+        Path oldListFile = temporaryDirectory.resolve("recordings.list.old");
+        IOException operationError = null;
+        try {
+            rewriteMusicWithoutRecording(
+                    newMusicFile,
+                    name,
+                    selectedOffset,
+                    selectedEnd,
+                    musicLength);
+            rewriteIndexWithoutRecording(newIndexFile, name, selectedOffset, removedBytes);
+            rewriteListWithoutRecording(newListFile, pName);
+
+            Files.copy(musicFile, oldMusicFile, StandardCopyOption.REPLACE_EXISTING);
+            Files.copy(indexFile, oldIndexFile, StandardCopyOption.REPLACE_EXISTING);
+            Files.copy(listFile, oldListFile, StandardCopyOption.REPLACE_EXISTING);
+            replaceLibraryFiles(
+                    newMusicFile,
+                    newIndexFile,
+                    newListFile,
+                    oldMusicFile,
+                    oldIndexFile,
+                    oldListFile);
+        } catch (IOException pError) {
+            operationError = pError;
+            throw pError;
+        } finally {
+            IOException cleanupError = deleteTemporaryDirectory(temporaryDirectory);
+            if (cleanupError != null) {
+                if (operationError != null) {
+                    operationError.addSuppressed(cleanupError);
+                } else {
+                    throw cleanupError;
+                }
+            }
+        }
+        return true;
+    }
+
+    @Override
     public synchronized List<RecordingMetadata> listRecordings() throws IOException {
         List<RecordingMetadata> recordings = readLibraryList();
         return List.copyOf(recordings);
@@ -197,6 +285,311 @@ public final class RecordingStorage implements RecordingLibrary {
             throw new RecordingStorageException("recordings.list contains a name absent from recordings.index");
         }
         return Optional.empty();
+    }
+
+    private long validateIndexForDeletion(Set<String> pListedNames, long pMusicLength) throws IOException {
+        validateRecordAlignment(musicFile, IConstants.RECORDING_HEADER_BYTES);
+        validateRecordAlignment(indexFile, IConstants.RECORDING_INDEX_RECORD_BYTES);
+        long recordSize = IConstants.RECORDING_INDEX_RECORD_BYTES;
+        long recordCount = Files.size(indexFile) / recordSize;
+        byte[] previousRecord = null;
+        try (RandomAccessFile index = new RandomAccessFile(indexFile.toFile(), "r")) {
+            for (long recordIndex = 0; recordIndex < recordCount; recordIndex++) {
+                byte[] record = new byte[IConstants.RECORDING_INDEX_RECORD_BYTES];
+                index.readFully(record);
+                String name = decodeName(record, 0);
+                if (!pListedNames.contains(name)) {
+                    throw new RecordingStorageException(
+                            "recordings.index contains a name absent from recordings.list");
+                }
+                if (previousRecord != null
+                        && BalancedMergeSort.compareIndexNames(previousRecord, record) >= 0) {
+                    throw new RecordingStorageException("recordings.index is not strictly ordered by name");
+                }
+                long musicOffset = ByteBuffer.wrap(record)
+                        .order(ByteOrder.BIG_ENDIAN)
+                        .getLong(IConstants.RECORDING_NAME_BYTES);
+                if (musicOffset < 0
+                        || musicOffset >= pMusicLength
+                        || musicOffset % IConstants.RECORDING_HEADER_BYTES != 0) {
+                    throw new RecordingStorageException("recordings.index contains an invalid music offset");
+                }
+                previousRecord = record;
+            }
+        }
+        return recordCount;
+    }
+
+    private long validateMusicForDeletion(
+            Set<String> pListedNames,
+            long pIndexCount,
+            byte[] pSelectedName,
+            long pMusicLength) throws IOException {
+        long musicOffset = 0;
+        long recordingCount = 0;
+        long selectedEnd = -1;
+        try (RandomAccessFile music = new RandomAccessFile(musicFile.toFile(), "r")) {
+            while (musicOffset < pMusicLength) {
+                if (pMusicLength - musicOffset < IConstants.RECORDING_HEADER_BYTES) {
+                    throw new RecordingStorageException("recordings.music ends with an incomplete header");
+                }
+                MusicHeader header = readMusicHeader(music, musicOffset);
+                long expectedCommandsStart;
+                try {
+                    expectedCommandsStart = Math.addExact(musicOffset, IConstants.RECORDING_HEADER_BYTES);
+                } catch (ArithmeticException pError) {
+                    throw new RecordingStorageException("recording header offset overflows", pError);
+                }
+                if (header.commandsStart() != expectedCommandsStart
+                        || header.commandsEnd() < header.commandsStart()
+                        || header.commandsEnd() > pMusicLength
+                        || header.commandsStart() % IConstants.COMMAND_RECORD_BYTES != 0
+                        || header.commandsEnd() % IConstants.COMMAND_RECORD_BYTES != 0
+                        || (header.commandsEnd() - header.commandsStart())
+                                % IConstants.COMMAND_RECORD_BYTES != 0) {
+                    throw new RecordingStorageException("recording header contains an invalid command range");
+                }
+                if (!pListedNames.contains(header.name())) {
+                    throw new RecordingStorageException(
+                            "recordings.music contains a name absent from recordings.list");
+                }
+
+                Optional<IndexEntry> indexEntry = findIndexEntry(encodeName(header.name()), pIndexCount);
+                if (indexEntry.isEmpty() || indexEntry.orElseThrow().musicOffset() != musicOffset) {
+                    throw new RecordingStorageException("recordings.index and recordings.music do not match");
+                }
+                validateCommands(music, header.commandsStart(), header.commandsEnd());
+                if (Arrays.equals(encodeName(header.name()), pSelectedName)) {
+                    selectedEnd = header.commandsEnd();
+                }
+                recordingCount++;
+                musicOffset = header.commandsEnd();
+            }
+        }
+        if (recordingCount != pIndexCount) {
+            throw new RecordingStorageException("recordings.music and recordings.index have different record counts");
+        }
+        return selectedEnd;
+    }
+
+    private Optional<IndexEntry> findIndexEntry(byte[] pName, long pRecordCount) throws IOException {
+        long recordSize = IConstants.RECORDING_INDEX_RECORD_BYTES;
+        long low = 0;
+        long high = pRecordCount - 1;
+        byte[] searchRecord = createIndexRecord(pName, 0L);
+        try (RandomAccessFile index = new RandomAccessFile(indexFile.toFile(), "r")) {
+            while (low <= high) {
+                long middle = low + (high - low) / 2;
+                index.seek(middle * recordSize);
+                byte[] candidate = new byte[IConstants.RECORDING_INDEX_RECORD_BYTES];
+                index.readFully(candidate);
+                int comparison = BalancedMergeSort.compareIndexNames(candidate, searchRecord);
+                if (comparison == 0) {
+                    long musicOffset = ByteBuffer.wrap(candidate)
+                            .order(ByteOrder.BIG_ENDIAN)
+                            .getLong(IConstants.RECORDING_NAME_BYTES);
+                    return Optional.of(new IndexEntry(musicOffset));
+                }
+                if (comparison < 0) {
+                    low = middle + 1;
+                } else {
+                    high = middle - 1;
+                }
+            }
+        }
+        return Optional.empty();
+    }
+
+    private static MusicHeader readMusicHeader(RandomAccessFile pMusic, long pMusicOffset) throws IOException {
+        pMusic.seek(pMusicOffset);
+        byte[] header = new byte[IConstants.RECORDING_HEADER_BYTES];
+        pMusic.readFully(header);
+        String name = decodeName(header, 0);
+        ByteBuffer fields = ByteBuffer.wrap(header).order(ByteOrder.BIG_ENDIAN);
+        long commandsStart = fields.getLong(IConstants.RECORDING_NAME_BYTES);
+        long commandsEnd = fields.getLong(IConstants.RECORDING_NAME_BYTES + Long.BYTES);
+        return new MusicHeader(name, commandsStart, commandsEnd);
+    }
+
+    private static void validateCommands(
+            RandomAccessFile pMusic,
+            long pCommandsStart,
+            long pCommandsEnd) throws IOException {
+        long previousTime = -1;
+        pMusic.seek(pCommandsStart);
+        while (pMusic.getFilePointer() < pCommandsEnd) {
+            byte[] bytes = new byte[IConstants.COMMAND_RECORD_BYTES];
+            pMusic.readFully(bytes);
+            CommandRecord command;
+            try {
+                command = CommandRecord.fromByteArray(bytes);
+            } catch (IllegalArgumentException pError) {
+                throw new RecordingStorageException("recording contains an invalid command record", pError);
+            }
+            if (command.getRelativeTimeMillis() < previousTime) {
+                throw new RecordingStorageException("recording command timestamps are not ordered");
+            }
+            previousTime = command.getRelativeTimeMillis();
+        }
+    }
+
+    private void rewriteMusicWithoutRecording(
+            Path pDestination,
+            byte[] pName,
+            long pSelectedOffset,
+            long pSelectedEnd,
+            long pMusicLength) throws IOException {
+        long sourceOffset = 0;
+        long destinationOffset = 0;
+        try (RandomAccessFile source = new RandomAccessFile(musicFile.toFile(), "r");
+                DataOutputStream destination = new DataOutputStream(new BufferedOutputStream(
+                        Files.newOutputStream(pDestination, StandardOpenOption.CREATE_NEW)))) {
+            while (sourceOffset < pMusicLength) {
+                MusicHeader header = readMusicHeader(source, sourceOffset);
+                if (sourceOffset == pSelectedOffset) {
+                    sourceOffset = pSelectedEnd;
+                    continue;
+                }
+                byte[] encodedName = encodeName(header.name());
+                long newCommandsStart = destinationOffset + IConstants.RECORDING_HEADER_BYTES;
+                long commandBytes = header.commandsEnd() - header.commandsStart();
+                long newCommandsEnd = newCommandsStart + commandBytes;
+                destination.write(encodedName);
+                destination.writeLong(newCommandsStart);
+                destination.writeLong(newCommandsEnd);
+                source.seek(header.commandsStart());
+                copyRange(source, commandBytes, destination);
+                sourceOffset = header.commandsEnd();
+                destinationOffset = newCommandsEnd;
+            }
+        }
+    }
+
+    private void rewriteIndexWithoutRecording(
+            Path pDestination,
+            byte[] pName,
+            long pSelectedOffset,
+            long pRemovedBytes) throws IOException {
+        try (DataInputStream source = new DataInputStream(Files.newInputStream(indexFile));
+                DataOutputStream destination = new DataOutputStream(new BufferedOutputStream(
+                        Files.newOutputStream(pDestination, StandardOpenOption.CREATE_NEW)))) {
+            long recordCount = Files.size(indexFile) / IConstants.RECORDING_INDEX_RECORD_BYTES;
+            for (long recordIndex = 0; recordIndex < recordCount; recordIndex++) {
+                byte[] record = new byte[IConstants.RECORDING_INDEX_RECORD_BYTES];
+                source.readFully(record);
+                if (Arrays.equals(
+                        Arrays.copyOfRange(record, 0, IConstants.RECORDING_NAME_BYTES),
+                        pName)) {
+                    continue;
+                }
+                long oldOffset = ByteBuffer.wrap(record)
+                        .order(ByteOrder.BIG_ENDIAN)
+                        .getLong(IConstants.RECORDING_NAME_BYTES);
+                long newOffset = oldOffset > pSelectedOffset ? oldOffset - pRemovedBytes : oldOffset;
+                destination.write(record, 0, IConstants.RECORDING_NAME_BYTES);
+                destination.writeLong(newOffset);
+            }
+        }
+    }
+
+    private void rewriteListWithoutRecording(Path pDestination, String pName) throws IOException {
+        try (BufferedReader source = Files.newBufferedReader(listFile, StandardCharsets.UTF_8);
+                BufferedWriter destination = Files.newBufferedWriter(
+                        pDestination,
+                        StandardCharsets.UTF_8,
+                        StandardOpenOption.CREATE_NEW)) {
+            String line;
+            while ((line = source.readLine()) != null) {
+                int separator = line.indexOf('\t');
+                if (separator > 0 && line.substring(0, separator).equals(pName)) {
+                    continue;
+                }
+                destination.write(line);
+                destination.write('\n');
+            }
+        }
+    }
+
+    private static void copyRange(
+            RandomAccessFile pSource,
+            long pLength,
+            OutputStream pDestination) throws IOException {
+        byte[] buffer = new byte[8192];
+        long remaining = pLength;
+        while (remaining > 0) {
+            int bytesToRead = (int) Math.min(buffer.length, remaining);
+            pSource.readFully(buffer, 0, bytesToRead);
+            pDestination.write(buffer, 0, bytesToRead);
+            remaining -= bytesToRead;
+        }
+    }
+
+    private void replaceLibraryFiles(
+            Path pNewMusic,
+            Path pNewIndex,
+            Path pNewList,
+            Path pOldMusic,
+            Path pOldIndex,
+            Path pOldList) throws IOException {
+        try {
+            replaceFile(pNewMusic, musicFile);
+            replaceFile(pNewIndex, indexFile);
+            replaceFile(pNewList, listFile);
+        } catch (IOException pError) {
+            restoreFile(pOldMusic, musicFile, pError);
+            restoreFile(pOldIndex, indexFile, pError);
+            restoreFile(pOldList, listFile, pError);
+            throw pError;
+        }
+    }
+
+    private static void replaceFile(Path pReplacement, Path pOriginal) throws IOException {
+        try {
+            Files.move(
+                    pReplacement,
+                    pOriginal,
+                    StandardCopyOption.ATOMIC_MOVE,
+                    StandardCopyOption.REPLACE_EXISTING);
+        } catch (AtomicMoveNotSupportedException pError) {
+            Files.move(pReplacement, pOriginal, StandardCopyOption.REPLACE_EXISTING);
+        }
+    }
+
+    private static void restoreFile(Path pBackup, Path pOriginal, IOException pOperationError) {
+        try {
+            Files.copy(pBackup, pOriginal, StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException pRestoreError) {
+            pOperationError.addSuppressed(pRestoreError);
+        }
+    }
+
+    private static IOException deleteTemporaryDirectory(Path pDirectory) {
+        IOException firstError = null;
+        try (var files = Files.newDirectoryStream(pDirectory)) {
+            for (Path file : files) {
+                try {
+                    Files.deleteIfExists(file);
+                } catch (IOException pError) {
+                    firstError = addCleanupError(firstError, pError);
+                }
+            }
+        } catch (IOException pError) {
+            firstError = addCleanupError(firstError, pError);
+        }
+        try {
+            Files.deleteIfExists(pDirectory);
+        } catch (IOException pError) {
+            firstError = addCleanupError(firstError, pError);
+        }
+        return firstError;
+    }
+
+    private static IOException addCleanupError(IOException pFirstError, IOException pNewError) {
+        if (pFirstError == null) {
+            return pNewError;
+        }
+        pFirstError.addSuppressed(pNewError);
+        return pFirstError;
     }
 
     private void appendMusicRecord(

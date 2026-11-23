@@ -8,6 +8,7 @@ import app.util.IConstants;
 import app.supercollider.BandClient;
 import app.logic.GlfwGamepadRuntime;
 import app.logic.RecordingPlayer;
+import app.logic.RecordingDeletionService;
 import app.storage.RecordingStorage;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -73,9 +74,11 @@ public class powerBand {
             existingDialog.toFront();
             return;
         }
+        RecordingStorage recordingStorage = new RecordingStorage(Path.of("."));
         RecordingPlaybackDialog dialog = new RecordingPlaybackDialog(
                 pOwner,
-                new RecordingPlayer(new RecordingStorage(Path.of("."))));
+                new RecordingPlayer(recordingStorage),
+                new RecordingDeletionService(recordingStorage));
         pPlaybackDialog.set(dialog);
         dialog.addWindowListener(new WindowAdapter() {
             @Override

@@ -5,6 +5,12 @@ After you change this layer, update this file so the next run stays current.
 Source: `src/test/app`
 
 ## Test classes
+### RecordingDeletionServiceTest
+Verifies exact-name delegation, missing names, and storage-error propagation. `src/test/app/logic/RecordingDeletionServiceTest.java`
+- `deletesTheExactRequestedName()` — checks the requested name and successful result.
+- `reportsWhenTheRequestedNameNoLongerExists()` — checks the not-found result.
+- `propagatesStorageErrors()` — checks explicit I/O failure propagation.
+
 ### RecordingSavePanelTest
 Verifies save-panel validation, partial-library cancellation, user cancellation and visible storage errors. `src/test/app/ui/RecordingSavePanelTest.java`
 - `validatesNamesKeepsTheRecordingForCorrectionsAndSavesOnlyAfterSuccess()` — checks trimming, duplicate and invalid names, and confirmed success.
@@ -31,6 +37,10 @@ Verifies binary persistence, disk search, initialization choices, and malformed/
 - `rejectsMisalignedMusicAndIndexFilesWithoutRepairingThem()` — checks corrupt binary-file sizes.
 - `rejectsInvalidNamesBeforeChangingFiles()` — checks invalid storage names.
 - `rejectsIncompleteListLineBeforeChangingBinaryFiles()` — checks incomplete list entries.
+- `deletesMiddleRecordingAndCompactsMusicWithCorrectOffsets()` — checks music compaction, index offsets, list order, and retained commands.
+- `deletesFirstAndLastRecordingsAndLeavesSingleRecordingFilesValid()` — checks boundary deletions and empty-library files.
+- `missingNameDoesNotModifyRecordingFiles()` — checks a not-found deletion leaves all files unchanged.
+- `rejectsCorruptLibraryWithoutModifyingRecordingFilesDuringDeletion()` — checks corruption is rejected without writes.
 - `listsChronologicallyAndReadsOnlyTheSelectedRecordingWithoutChangingFiles()` — checks read order, lookup and immutability.
 - `readOnlyQueriesHandleAbsentAndPartialFileSetsWithoutCreatingOrChangingFiles()` — checks empty and incomplete libraries.
 - `rejectsInvalidSelectedHeaderRangeWithoutRepairingFiles()` — checks invalid playback offsets.
@@ -88,9 +98,12 @@ Verifies menu layout and actions. `src/test/app/ui/MainMenuTest.java`
 - `playButtonRunsItsAction()` — checks the playback callback.
 
 ### RecordingPlaybackPanelTest
-Verifies asynchronous playback selection, cancellation, empty libraries, and visible errors. `src/test/app/ui/RecordingPlaybackPanelTest.java`
+Verifies asynchronous playback/deletion selection, confirmation, empty libraries, and visible errors. `src/test/app/ui/RecordingPlaybackPanelTest.java`
 - `loadsChronologicalChoicesOffEdtAndPlaysOnlyTheConfirmedSelection()` — checks EDT responsiveness, ordered options, and selected playback.
 - `cancellingTheSelectorDoesNotStartPlayback()` — checks selection cancellation.
+- `cancellingDeleteConfirmationDoesNotCallTheDeletionService()` — checks cancellation leaves the recording in the list.
+- `confirmedDeleteRemovesOnlyTheSelectedRecordingAndRefreshesTheList()` — checks confirmed deletion and refreshed choices.
+- `reportsDeleteErrorsAndKeepsTheRecordingVisible()` — checks explicit errors without hiding the selection.
 - `showsTheEmptyLibraryMessageWithoutOpeningPlayback()` — checks the empty state.
 - `reportsLibraryReadErrorsInsteadOfShowingAnEmptySuccess()` — checks explicit read errors.
 

@@ -1,5 +1,6 @@
 package app.ui;
 
+import app.logic.RecordingDeletionService;
 import app.logic.RecordingPlayer;
 import app.model.RecordingMetadata;
 import app.util.IConstants;
@@ -34,32 +35,46 @@ public final class RecordingPlaybackPanel extends JPanel {
         void showCompleted(Component pParent, String pName);
 
         void showNotFound(Component pParent, String pName);
+
+        boolean confirmDelete(Component pParent, String pName);
+
+        void showDeleted(Component pParent, String pName);
+
+        void showDeleteError(Component pParent, Throwable pError);
     }
 
     private final RecordingPlayer player;
+    private final RecordingDeletionService deletionService;
     private final Runnable finishedAction;
     private final Interaction interaction;
     private final DefaultListModel<RecordingMetadata> recordingModel = new DefaultListModel<>();
     private final JList<RecordingMetadata> recordingList = new JList<>(recordingModel);
     private final JButton playButton = new JButton(IConstants.BUTTON_PLAY);
+    private final JButton deleteButton = new JButton(IConstants.BUTTON_DELETE);
     private final JButton cancelButton = new JButton(IConstants.BUTTON_CANCEL);
     private final JLabel status = new JLabel(IConstants.PLAYBACK_LOADING_MESSAGE);
     private final DefaultListCellRenderer listCellRenderer = new DefaultListCellRenderer();
 
     private SwingWorker<List<RecordingMetadata>, Void> loadWorker;
     private SwingWorker<RecordingPlayer.Result, Void> playWorker;
+    private SwingWorker<RecordingDeletionService.Result, Void> deleteWorker;
     private boolean loading = true;
 
-    public RecordingPlaybackPanel(RecordingPlayer pPlayer, Runnable pFinishedAction) {
-        this(pPlayer, pFinishedAction, new SwingInteraction());
+    public RecordingPlaybackPanel(
+            RecordingPlayer pPlayer,
+            RecordingDeletionService pDeletionService,
+            Runnable pFinishedAction) {
+        this(pPlayer, pDeletionService, pFinishedAction, new SwingInteraction());
     }
 
     public RecordingPlaybackPanel(
             RecordingPlayer pPlayer,
+            RecordingDeletionService pDeletionService,
             Runnable pFinishedAction,
             Interaction pInteraction) {
         super(new BorderLayout(8, 8));
         player = Objects.requireNonNull(pPlayer, "pPlayer");
+        deletionService = Objects.requireNonNull(pDeletionService, "pDeletionService");
         finishedAction = Objects.requireNonNull(pFinishedAction, "pFinishedAction");
         interaction = Objects.requireNonNull(pInteraction, "pInteraction");
 
@@ -76,11 +91,14 @@ public final class RecordingPlaybackPanel extends JPanel {
 
         JPanel actions = new JPanel(new FlowLayout(FlowLayout.TRAILING));
         actions.add(playButton);
+        actions.add(deleteButton);
         actions.add(cancelButton);
         add(actions, BorderLayout.SOUTH);
 
         playButton.setEnabled(false);
+        deleteButton.setEnabled(false);
         playButton.addActionListener(pEvent -> playSelected());
+        deleteButton.addActionListener(pEvent -> deleteSelected());
         cancelButton.addActionListener(pEvent -> cancelAndClose());
         loadRecordings();
     }
@@ -92,6 +110,9 @@ public final class RecordingPlaybackPanel extends JPanel {
         if (playWorker != null && !playWorker.isDone()) {
             playWorker.cancel(true);
         }
+        if (deleteWorker != null && !deleteWorker.isDone()) {
+            deleteWorker.cancel(true);
+        }
     }
 
     JList<RecordingMetadata> getRecordingList() {
@@ -100,6 +121,10 @@ public final class RecordingPlaybackPanel extends JPanel {
 
     JButton getPlayButton() {
         return playButton;
+    }
+
+    JButton getDeleteButton() {
+        return deleteButton;
     }
 
     JButton getCancelButton() {
@@ -132,7 +157,7 @@ public final class RecordingPlaybackPanel extends JPanel {
                         recordingModel.addElement(recording);
                     }
                     status.setText(IConstants.PLAYBACK_SELECT_MESSAGE);
-                    updatePlayButton();
+                    updateActionButtons();
                 } catch (InterruptedException pError) {
                     Thread.currentThread().interrupt();
                     interaction.showError(RecordingPlaybackPanel.this, pError);
@@ -150,13 +175,13 @@ public final class RecordingPlaybackPanel extends JPanel {
 
     private void selectionChanged(ListSelectionEvent pEvent) {
         if (!pEvent.getValueIsAdjusting()) {
-            updatePlayButton();
+            updateActionButtons();
         }
     }
 
     private void playSelected() {
         RecordingMetadata selected = recordingList.getSelectedValue();
-        if (loading || selected == null || isPlaying()) {
+        if (loading || selected == null || isBusy()) {
             return;
         }
         setPlaying(true);
@@ -192,11 +217,66 @@ public final class RecordingPlaybackPanel extends JPanel {
                     interaction.showError(RecordingPlaybackPanel.this, rootCause(pError));
                 } catch (CancellationException pError) {
                     status.setText(IConstants.PLAYBACK_CANCELLED_MESSAGE);
+                } finally {
+                    updateActionButtons();
                 }
             }
         };
-        updatePlayButton();
+        updateActionButtons();
         playWorker.execute();
+    }
+
+    private void deleteSelected() {
+        RecordingMetadata selected = recordingList.getSelectedValue();
+        if (loading || selected == null || isBusy()
+                || !interaction.confirmDelete(this, selected.getName())) {
+            return;
+        }
+
+        setDeleting(true);
+        status.setText(IConstants.PLAYBACK_DELETING_MESSAGE);
+        deleteWorker = new SwingWorker<>() {
+            @Override
+            protected RecordingDeletionService.Result doInBackground() throws IOException {
+                return deletionService.delete(selected.getName());
+            }
+
+            @Override
+            protected void done() {
+                setDeleting(false);
+                try {
+                    switch (get()) {
+                        case DELETED -> {
+                            recordingModel.removeElement(selected);
+                            status.setText(recordingModel.isEmpty()
+                                    ? IConstants.PLAYBACK_EMPTY_MESSAGE
+                                    : IConstants.PLAYBACK_SELECT_MESSAGE);
+                            interaction.showDeleted(RecordingPlaybackPanel.this, selected.getName());
+                        }
+                        case NOT_FOUND -> {
+                            recordingModel.removeElement(selected);
+                            status.setText(recordingModel.isEmpty()
+                                    ? IConstants.PLAYBACK_EMPTY_MESSAGE
+                                    : IConstants.PLAYBACK_SELECT_MESSAGE);
+                            interaction.showNotFound(RecordingPlaybackPanel.this, selected.getName());
+                        }
+                    }
+                } catch (InterruptedException pError) {
+                    Thread.currentThread().interrupt();
+                    status.setText(IConstants.PLAYBACK_SELECT_MESSAGE);
+                    interaction.showDeleteError(RecordingPlaybackPanel.this, pError);
+                } catch (ExecutionException pError) {
+                    status.setText(IConstants.PLAYBACK_SELECT_MESSAGE);
+                    interaction.showDeleteError(RecordingPlaybackPanel.this, rootCause(pError));
+                } catch (CancellationException pError) {
+                    status.setText(IConstants.PLAYBACK_SELECT_MESSAGE);
+                } finally {
+                    updateActionButtons();
+                }
+            }
+        };
+        updateActionButtons();
+        deleteWorker.execute();
     }
 
     private void cancelAndClose() {
@@ -208,14 +288,30 @@ public final class RecordingPlaybackPanel extends JPanel {
         return playWorker != null && !playWorker.isDone();
     }
 
+    private boolean isDeleting() {
+        return deleteWorker != null && !deleteWorker.isDone();
+    }
+
+    private boolean isBusy() {
+        return isPlaying() || isDeleting();
+    }
+
     private void setPlaying(boolean pPlaying) {
         recordingList.setEnabled(!pPlaying);
         cancelButton.setEnabled(true);
-        updatePlayButton();
+        updateActionButtons();
     }
 
-    private void updatePlayButton() {
-        playButton.setEnabled(!loading && !isPlaying() && recordingList.getSelectedValue() != null);
+    private void setDeleting(boolean pDeleting) {
+        recordingList.setEnabled(!pDeleting);
+        cancelButton.setEnabled(true);
+        updateActionButtons();
+    }
+
+    private void updateActionButtons() {
+        boolean actionAvailable = !loading && !isBusy() && recordingList.getSelectedValue() != null;
+        playButton.setEnabled(actionAvailable);
+        deleteButton.setEnabled(actionAvailable);
     }
 
     private static Throwable rootCause(ExecutionException pError) {
@@ -262,8 +358,46 @@ public final class RecordingPlaybackPanel extends JPanel {
                     IConstants.PLAYBACK_NOT_FOUND_MESSAGE_PREFIX
                             + pName
                             + IConstants.PLAYBACK_NOT_FOUND_MESSAGE_SUFFIX,
-                    IConstants.BUTTON_PLAY,
+                    IConstants.PLAYBACK_DIALOG_TITLE,
                     JOptionPane.WARNING_MESSAGE);
+        }
+
+        @Override
+        public boolean confirmDelete(Component pParent, String pName) {
+            Object[] options = { IConstants.BUTTON_CANCEL, IConstants.BUTTON_CONFIRM };
+            int choice = JOptionPane.showOptionDialog(
+                    pParent,
+                    IConstants.PLAYBACK_DELETE_CONFIRM_PREFIX
+                            + pName
+                            + IConstants.PLAYBACK_DELETE_CONFIRM_SUFFIX,
+                    IConstants.PLAYBACK_DELETE_CONFIRM_TITLE,
+                    JOptionPane.YES_NO_OPTION,
+                    JOptionPane.WARNING_MESSAGE,
+                    null,
+                    options,
+                    IConstants.BUTTON_CANCEL);
+            return choice == 1;
+        }
+
+        @Override
+        public void showDeleted(Component pParent, String pName) {
+            JOptionPane.showMessageDialog(
+                    pParent,
+                    IConstants.PLAYBACK_DELETE_COMPLETED_MESSAGE_PREFIX
+                            + pName
+                            + IConstants.PLAYBACK_DELETE_COMPLETED_MESSAGE_SUFFIX,
+                    IConstants.BUTTON_DELETE,
+                    JOptionPane.INFORMATION_MESSAGE);
+        }
+
+        @Override
+        public void showDeleteError(Component pParent, Throwable pError) {
+            String detail = pError.getMessage() == null ? pError.toString() : pError.getMessage();
+            JOptionPane.showMessageDialog(
+                    pParent,
+                    IConstants.PLAYBACK_DELETE_ERROR_MESSAGE_PREFIX + detail,
+                    IConstants.BUTTON_DELETE,
+                    JOptionPane.ERROR_MESSAGE);
         }
     }
 }

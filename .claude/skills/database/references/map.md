@@ -7,6 +7,7 @@ Source: `src/app/storage`, `src/app/sorting`, `src/app/exceptions`, `src/app/mod
 ## Implemented
 - Fixed-width music headers and command records, a sorted binary index, and a chronological text list.
 - Disk-based binary search, duplicate rejection, and partial-library initialization choices.
+- Physical deletion compacts the music file, adjusts index offsets, and filters the chronological list.
 - External Balanced Merge Sort for index records.
 
 ## Classes
@@ -15,6 +16,7 @@ Persistence contract used by recording workflows. `src/app/storage/RecordingLibr
 - `initialize(PartialFilesDecision pDecision)` — creates or initializes the recording file set.
 - `recordingExists(String pName)` — checks a name in the sorted index.
 - `addRecording(String pName, Instant pCreatedAt, List<CommandRecord> pCommands)` — appends a recording and updates the library.
+- `deleteRecording(String pName)` — removes a recording and updates all three files, or returns `false` when absent.
 - `listRecordings()` — returns immutable recording metadata in `recordings.list` order.
 - `readRecording(String pName)` — returns the selected command sequence or an empty result if absent.
 
@@ -24,6 +26,7 @@ Implements the recording file formats and initialization. `src/app/storage/Recor
 - `initialize(PartialFilesDecision pDecision)` — creates files or applies a partial-library decision.
 - `recordingExists(String pName)` — searches the index using disk seeks.
 - `addRecording(String pName, Instant pCreatedAt, List<CommandRecord> pCommands)` — appends music, index and list entries.
+- `deleteRecording(String pName)` — validates the library, stages compacted replacements, and removes the selected recording.
 - `listRecordings()` — reads validated metadata without creating or changing files.
 - `readRecording(String pName)` — searches the index by binary seek and reads the selected header range.
 

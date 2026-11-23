@@ -5,7 +5,7 @@ After you change this layer, update this file so the next run stays current.
 Source: `src/app/ui`
 
 ## Implemented
-- Swing menu, device-test window, playback selector, and local tablet input panel.
+- Swing menu, device-test window, playback selector with deletion confirmation, and local tablet input panel.
 - Recording window captures instrument commands and opens the asynchronous save flow.
 - Save panel validates names and presents storage initialization choices and results.
 
@@ -43,17 +43,20 @@ Validates and saves a recording asynchronously. `src/app/ui/RecordingSavePanel.j
 - `Interaction.showError(Component pParent, Throwable pError)` — displays a storage failure.
 
 ### RecordingPlaybackDialog
-Modeless playback selector owned by the main menu. `src/app/ui/RecordingPlaybackDialog.java`
-- `RecordingPlaybackDialog(Window pOwner, RecordingPlayer pPlayer)` — opens the asynchronous playback selector.
+Modeless playback and deletion selector owned by the main menu. `src/app/ui/RecordingPlaybackDialog.java`
+- `RecordingPlaybackDialog(Window pOwner, RecordingPlayer pPlayer, RecordingDeletionService pDeletionService)` — opens the asynchronous selector with playback and deletion services.
 
 ### RecordingPlaybackPanel
-Lists recordings, confirms selection, and plays without blocking the EDT. `src/app/ui/RecordingPlaybackPanel.java`
-- `RecordingPlaybackPanel(RecordingPlayer pPlayer, Runnable pFinishedAction)` — creates the selector with Swing feedback.
-- `RecordingPlaybackPanel(RecordingPlayer pPlayer, Runnable pFinishedAction, Interaction pInteraction)` — injects feedback for UI tests.
+Lists recordings, plays the selection, and confirms/deletes it without blocking the EDT. `src/app/ui/RecordingPlaybackPanel.java`
+- `RecordingPlaybackPanel(RecordingPlayer pPlayer, RecordingDeletionService pDeletionService, Runnable pFinishedAction)` — creates the selector with Swing feedback.
+- `RecordingPlaybackPanel(RecordingPlayer pPlayer, RecordingDeletionService pDeletionService, Runnable pFinishedAction, Interaction pInteraction)` — injects feedback for UI tests.
 - `Interaction.showEmpty(Component pParent)` — reports that no recordings are available.
 - `Interaction.showError(Component pParent, Throwable pError)` — reports storage or playback failures.
 - `Interaction.showCompleted(Component pParent, String pName)` — reports completion of a selected playback.
 - `Interaction.showNotFound(Component pParent, String pName)` — reports a selection removed from the library.
+- `Interaction.confirmDelete(Component pParent, String pName)` — asks for explicit delete confirmation.
+- `Interaction.showDeleted(Component pParent, String pName)` — confirms successful deletion.
+- `Interaction.showDeleteError(Component pParent, Throwable pError)` — reports a deletion failure.
 
 ### TabletInputPanel
 Captures local pointer position and press/release state. `src/app/ui/TabletInputPanel.java`

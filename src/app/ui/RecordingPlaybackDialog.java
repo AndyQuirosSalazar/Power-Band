@@ -1,5 +1,6 @@
 package app.ui;
 
+import app.logic.RecordingDeletionService;
 import app.logic.RecordingPlayer;
 import app.util.IConstants;
 import java.awt.Window;
@@ -13,11 +14,15 @@ public final class RecordingPlaybackDialog extends JDialog {
 
     private final RecordingPlaybackPanel playbackPanel;
 
-    public RecordingPlaybackDialog(Window pOwner, RecordingPlayer pPlayer) {
+    public RecordingPlaybackDialog(
+            Window pOwner,
+            RecordingPlayer pPlayer,
+            RecordingDeletionService pDeletionService) {
         super(pOwner, IConstants.PLAYBACK_DIALOG_TITLE, ModalityType.MODELESS);
         Objects.requireNonNull(pPlayer, "pPlayer");
+        Objects.requireNonNull(pDeletionService, "pDeletionService");
         setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
-        playbackPanel = new RecordingPlaybackPanel(pPlayer, this::dispose);
+        playbackPanel = new RecordingPlaybackPanel(pPlayer, pDeletionService, this::dispose);
         setContentPane(playbackPanel);
         setSize(440, 320);
         setLocationRelativeTo(pOwner);

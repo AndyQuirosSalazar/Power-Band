@@ -233,6 +233,11 @@ class RecordingSavePanelTest {
         }
 
         @Override
+        public boolean deleteRecording(String pName) {
+            return savedNames.remove(pName);
+        }
+
+        @Override
         public List<RecordingMetadata> listRecordings() {
             return List.of();
         }
